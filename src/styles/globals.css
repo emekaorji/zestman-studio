@@ -1,0 +1,398 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+@import "./tokens.css";
+
+/* Dark is canonical; "paper" is the light theme. */
+@custom-variant dark (&:not([data-theme="paper"] *));
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Tailwind utility surface
+   ───────────────────────────────────────────────────────────────────────── */
+@theme inline {
+  /* shadcn semantic names */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  /* Geist scales, addressable directly (bg-ds-gray-100, text-ds-blue-900, …) */
+  --color-ds-background-100: var(--ds-background-100);
+  --color-ds-background-200: var(--ds-background-200);
+  --color-ds-gray-100: var(--ds-gray-100);
+  --color-ds-gray-200: var(--ds-gray-200);
+  --color-ds-gray-300: var(--ds-gray-300);
+  --color-ds-gray-400: var(--ds-gray-400);
+  --color-ds-gray-500: var(--ds-gray-500);
+  --color-ds-gray-600: var(--ds-gray-600);
+  --color-ds-gray-700: var(--ds-gray-700);
+  --color-ds-gray-800: var(--ds-gray-800);
+  --color-ds-gray-900: var(--ds-gray-900);
+  --color-ds-gray-1000: var(--ds-gray-1000);
+  --color-ds-gray-alpha-100: var(--ds-gray-alpha-100);
+  --color-ds-gray-alpha-200: var(--ds-gray-alpha-200);
+  --color-ds-gray-alpha-300: var(--ds-gray-alpha-300);
+  --color-ds-gray-alpha-400: var(--ds-gray-alpha-400);
+  --color-ds-blue-100: var(--ds-blue-100);
+  --color-ds-blue-200: var(--ds-blue-200);
+  --color-ds-blue-300: var(--ds-blue-300);
+  --color-ds-blue-400: var(--ds-blue-400);
+  --color-ds-blue-700: var(--ds-blue-700);
+  --color-ds-blue-900: var(--ds-blue-900);
+  --color-ds-red-100: var(--ds-red-100);
+  --color-ds-red-200: var(--ds-red-200);
+  --color-ds-red-300: var(--ds-red-300);
+  --color-ds-red-400: var(--ds-red-400);
+  --color-ds-red-900: var(--ds-red-900);
+  --color-ds-amber-100: var(--ds-amber-100);
+  --color-ds-amber-200: var(--ds-amber-200);
+  --color-ds-amber-300: var(--ds-amber-300);
+  --color-ds-amber-400: var(--ds-amber-400);
+  --color-ds-amber-900: var(--ds-amber-900);
+  --color-ds-green-100: var(--ds-green-100);
+  --color-ds-green-200: var(--ds-green-200);
+  --color-ds-green-300: var(--ds-green-300);
+  --color-ds-green-400: var(--ds-green-400);
+  --color-ds-green-900: var(--ds-green-900);
+  --color-ds-teal-200: var(--ds-teal-200);
+  --color-ds-teal-900: var(--ds-teal-900);
+  --color-ds-purple-200: var(--ds-purple-200);
+  --color-ds-purple-900: var(--ds-purple-900);
+  --color-ds-focus-color: var(--ds-focus-color);
+  --color-overlay: var(--overlay);
+
+  /* studio semantic names (feature code) */
+  --color-canvas: var(--bg);
+  --color-sunken: var(--bg-subtle);
+  --color-raised: var(--bg-raised);
+  --color-hoverbg: var(--bg-hover);
+  --color-activebg: var(--bg-active);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-accent-z: var(--accent-z);
+  --color-accent-z-fg: var(--accent-z-fg);
+  --color-accent-z-soft: var(--accent-z-soft);
+  --color-link-z: var(--link-z);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-ok-line: var(--ok-line);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-warn-line: var(--warn-line);
+  --color-err: var(--err);
+  --color-err-soft: var(--err-soft);
+  --color-err-line: var(--err-line);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-method-get: var(--method-get);
+  --color-method-post: var(--method-post);
+  --color-method-put: var(--method-put);
+  --color-method-patch: var(--method-patch);
+  --color-method-delete: var(--method-delete);
+  --color-method-ws: var(--method-ws);
+  --color-syntax-key: var(--syntax-key);
+  --color-syntax-str: var(--syntax-str);
+  --color-syntax-num: var(--syntax-num);
+
+  /* Geist radii: 4 / 6 / 8 */
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 2px);
+  --radius-2xl: calc(var(--radius) + 6px);
+
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-heading: var(--font-sans);
+
+  /* Vercel's type scale */
+  --text-2xs: 11px;
+  --text-2xs--line-height: 16px;
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 20px;
+  --text-base: 14px;
+  --text-base--line-height: 20px;
+  --text-md: 16px;
+  --text-md--line-height: 24px;
+  --text-lg: 20px;
+  --text-lg--line-height: 26px;
+  --text-xl: 24px;
+  --text-xl--line-height: 32px;
+  --text-caps: 11px;
+  --text-caps--line-height: 16px;
+
+  --ease-panel: var(--ease-panel);
+  --ease-out: var(--ease-out);
+  --ease-in-out: var(--ease-in-out);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Base
+   ───────────────────────────────────────────────────────────────────────── */
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  html {
+    @apply font-sans;
+    /* Vercel drives panel sizes off the root so drags never re-render React. */
+    --sidebar-w: 240px;
+    --rail-w: 320px;
+    --drawer-h: 320px;
+  }
+
+  body {
+    overflow: hidden;
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    /* Vercel's UI base */
+    font-size: 14px;
+    line-height: 20px;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Tailwind v4 resets button cursor to `default`. Vercel — and every native
+     control — shows a pointer. Restore it for everything interactive. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="tab"]:not([aria-disabled="true"]),
+  [role="option"]:not([aria-disabled="true"]),
+  [role="menuitem"]:not([aria-disabled="true"]),
+  [role="menuitemcheckbox"]:not([aria-disabled="true"]),
+  [role="menuitemradio"]:not([aria-disabled="true"]),
+  [role="switch"]:not([aria-disabled="true"]),
+  [role="checkbox"]:not([aria-disabled="true"]),
+  [role="radio"]:not([aria-disabled="true"]),
+  [role="link"],
+  a[href],
+  label[for],
+  summary,
+  select:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  input[type="submit"]:not(:disabled),
+  input[type="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
+  /* One focus treatment everywhere, Geist's. */
+  :focus-visible {
+    outline: 2px solid var(--ds-focus-color);
+    outline-offset: 1px;
+    border-radius: var(--radius-sm);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--ink-3);
+  }
+
+  ::selection {
+    background: var(--ds-blue-400);
+    color: var(--ink);
+  }
+
+  /* Thin, Vercel-quiet scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--ds-gray-400) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--ds-gray-400);
+    border-radius: 3px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--ds-gray-500);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Components
+   ───────────────────────────────────────────────────────────────────────── */
+@layer components {
+  .caps-label {
+    @apply text-caps font-medium tracking-[0.08em] text-ink-3 uppercase;
+  }
+
+  /* Scroll fog — Vercel's exact technique. The mask stops are animated by a
+     scroll-driven animation, so the fade tracks the scroll position itself
+     with no JS and no scroll listener. Falls back to data attributes where
+     scroll-driven animations are unsupported. */
+  .fade-scroll {
+    --fade-top: 0px;
+    --fade-bottom: 0px;
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      black var(--fade-top),
+      black calc(100% - var(--fade-bottom)),
+      transparent 100%
+    );
+    transition:
+      --fade-top var(--dur-base),
+      --fade-bottom var(--dur-base);
+  }
+  .fade-scroll[data-fade-top="true"] {
+    --fade-top: var(--fog-size);
+  }
+  .fade-scroll[data-fade-bottom="true"] {
+    --fade-bottom: var(--fog-size);
+  }
+
+  /* Longhands, not the shorthand: `animation-duration: auto` is only legal as a
+     longhand, and the shorthand would silently drop the whole declaration. */
+  @supports (animation-timeline: scroll()) {
+    .fade-scroll {
+      animation-name: fade-scroll-top, fade-scroll-bottom;
+      animation-duration: auto, auto;
+      animation-timing-function: linear, linear;
+      animation-fill-mode: both, both;
+      animation-timeline: scroll(self), scroll(self);
+      animation-range: 0 var(--fog-size), calc(100% - var(--fog-size)) 100%;
+    }
+  }
+
+  /* Horizontal variant, for scrolling tab strips and wide tables. */
+  .fade-scroll-x {
+    --fade-left: 0px;
+    --fade-right: 0px;
+    mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      black var(--fade-left),
+      black calc(100% - var(--fade-right)),
+      transparent 100%
+    );
+    transition:
+      --fade-left var(--dur-base),
+      --fade-right var(--dur-base);
+  }
+  @supports (animation-timeline: scroll()) {
+    .fade-scroll-x {
+      animation-name: fade-scroll-left, fade-scroll-right;
+      animation-duration: auto, auto;
+      animation-timing-function: linear, linear;
+      animation-fill-mode: both, both;
+      animation-timeline: scroll(self x), scroll(self x);
+      animation-range: 0 var(--fog-size), calc(100% - var(--fog-size)) 100%;
+    }
+  }
+
+  .hide-scrollbar {
+    scrollbar-width: none;
+  }
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Interpolating a length custom property requires registering it. */
+@property --fade-top {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --fade-bottom {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --fade-left {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --fade-right {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@keyframes fade-scroll-top {
+  to {
+    --fade-top: var(--fog-size);
+  }
+}
+@keyframes fade-scroll-bottom {
+  from {
+    --fade-bottom: var(--fog-size);
+  }
+}
+@keyframes fade-scroll-left {
+  to {
+    --fade-left: var(--fog-size);
+  }
+}
+@keyframes fade-scroll-right {
+  from {
+    --fade-right: var(--fog-size);
+  }
+}

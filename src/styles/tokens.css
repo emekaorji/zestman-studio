@@ -1,0 +1,361 @@
+/*
+ * Zestman Studio design tokens.
+ *
+ * Source of truth: Vercel's Geist design system, read verbatim out of a live
+ * vercel.com dashboard capture (workbench/vercel.mhtml) via getComputedStyle.
+ * These are Vercel's own values, not approximations of them.
+ *
+ * Layers, in order:
+ *   1. --ds-*        Geist raw scales. Dark on :root, light under [data-theme="paper"].
+ *   2. semantic      --bg / --ink / --line ... studio names mapped onto the scales.
+ *   3. shadcn        --background / --foreground / --radius ... consumed by components/ui.
+ *   4. motion        durations + easings, also lifted from Vercel.
+ *
+ * Utility names are exposed from globals.css (@theme inline).
+ */
+
+/* ─────────────────────────────────────────────────────────────────────────
+   DARK (canonical) — Vercel dark-theme
+   ───────────────────────────────────────────────────────────────────────── */
+:root {
+  /* — 1. Geist scales — */
+  --ds-background-100: hsl(0 0% 4%);
+  --ds-background-200: hsl(0 0% 0%);
+
+  --ds-gray-100: hsl(0 0% 10%);
+  --ds-gray-200: hsl(0 0% 12%);
+  --ds-gray-300: hsl(0 0% 16%);
+  --ds-gray-400: hsl(0 0% 18%);
+  --ds-gray-500: hsl(0 0% 27%);
+  --ds-gray-600: hsl(0 0% 53%);
+  --ds-gray-700: hsl(0 0% 56%);
+  --ds-gray-800: hsl(0 0% 49%);
+  --ds-gray-900: hsl(0 0% 63%);
+  --ds-gray-1000: hsl(0 0% 93%);
+
+  --ds-gray-alpha-100: #ffffff0f;
+  --ds-gray-alpha-200: #ffffff17;
+  --ds-gray-alpha-300: #ffffff21;
+  --ds-gray-alpha-400: #ffffff24;
+  --ds-gray-alpha-500: #ffffff3d;
+  --ds-gray-alpha-600: #ffffff82;
+  --ds-gray-alpha-700: #ffffff8a;
+  --ds-gray-alpha-800: #ffffff78;
+  --ds-gray-alpha-900: #ffffff9c;
+  --ds-gray-alpha-1000: #ffffffeb;
+
+  --ds-blue-100: hsl(216 50% 12%);
+  --ds-blue-200: hsl(214 59% 15%);
+  --ds-blue-300: hsl(213 71% 20%);
+  --ds-blue-400: hsl(212 78% 23%);
+  --ds-blue-500: hsl(211 86% 27%);
+  --ds-blue-600: hsl(206 100% 50%);
+  --ds-blue-700: hsl(212 100% 48%);
+  --ds-blue-800: hsl(212 100% 41%);
+  --ds-blue-900: hsl(210 100% 66%);
+  --ds-blue-1000: hsl(206 100% 96%);
+
+  --ds-red-100: hsl(357 37% 12%);
+  --ds-red-200: hsl(357 46% 16%);
+  --ds-red-300: hsl(356 54% 22%);
+  --ds-red-400: hsl(357 55% 26%);
+  --ds-red-500: hsl(357 60% 32%);
+  --ds-red-600: hsl(358 75% 59%);
+  --ds-red-700: hsl(358 75% 59%);
+  --ds-red-800: hsl(358 69% 52%);
+  --ds-red-900: hsl(358 100% 69%);
+  --ds-red-1000: hsl(353 90% 96%);
+
+  --ds-amber-100: hsl(35 100% 8%);
+  --ds-amber-200: hsl(32 100% 10%);
+  --ds-amber-300: hsl(33 100% 15%);
+  --ds-amber-400: hsl(35 100% 17%);
+  --ds-amber-500: hsl(35 91% 22%);
+  --ds-amber-600: hsl(39 85% 49%);
+  --ds-amber-700: hsl(39 100% 57%);
+  --ds-amber-800: hsl(35 100% 52%);
+  --ds-amber-900: hsl(39 90% 50%);
+  --ds-amber-1000: hsl(40 94% 93%);
+
+  --ds-green-100: hsl(136 50% 9%);
+  --ds-green-200: hsl(137 50% 12%);
+  --ds-green-300: hsl(136 50% 14%);
+  --ds-green-400: hsl(135 70% 16%);
+  --ds-green-500: hsl(135 70% 23%);
+  --ds-green-600: hsl(135 70% 34%);
+  --ds-green-700: hsl(131 41% 46%);
+  --ds-green-800: hsl(132 43% 39%);
+  --ds-green-900: hsl(131 43% 57%);
+  --ds-green-1000: hsl(136 73% 94%);
+
+  --ds-teal-100: hsl(169 78% 7%);
+  --ds-teal-200: hsl(170 74% 9%);
+  --ds-teal-300: hsl(171 75% 13%);
+  --ds-teal-400: hsl(171 85% 13%);
+  --ds-teal-500: hsl(172 85% 20%);
+  --ds-teal-600: hsl(172 85% 32%);
+  --ds-teal-700: hsl(173 80% 36%);
+  --ds-teal-800: hsl(173 83% 30%);
+  --ds-teal-900: hsl(174 90% 41%);
+  --ds-teal-1000: hsl(166 71% 93%);
+
+  --ds-purple-100: hsl(283 30% 12%);
+  --ds-purple-200: hsl(281 38% 16%);
+  --ds-purple-300: hsl(279 44% 23%);
+  --ds-purple-400: hsl(277 46% 28%);
+  --ds-purple-500: hsl(274 49% 35%);
+  --ds-purple-600: hsl(272 51% 54%);
+  --ds-purple-700: hsl(272 51% 54%);
+  --ds-purple-800: hsl(272 47% 45%);
+  --ds-purple-900: hsl(275 80% 71%);
+  --ds-purple-1000: hsl(281 73% 96%);
+
+  --ds-pink-700: hsl(336 80% 58%);
+  --ds-pink-900: hsl(341 90% 67%);
+
+  /* Focus + elevation, verbatim from Geist */
+  --ds-focus-color: hsl(210 100% 66%);
+  --ds-focus-ring: 0 0 0 2px hsl(0 0% 4%), 0 0 0 4px hsl(210 100% 66%);
+  --ds-shadow-border: 0 0 0 1px #ffffff25;
+  --ds-shadow-small: 0px 1px 2px #00000029;
+  --ds-shadow-medium: 0px 2px 2px #00000052, 0px 8px 8px -8px #00000029;
+  --ds-shadow-large: 0px 2px 2px #0000000a, 0px 8px 16px -4px #0000000a;
+  --ds-shadow-menu:
+    0 0 0 1px #ffffff25, 0px 1px 1px #00000005, 0px 4px 8px -4px #0000000a,
+    0px 16px 24px -8px #0000000f, 0 0 0 1px hsl(0 0% 0%);
+  --ds-shadow-modal:
+    0 0 0 1px #ffffff25, 0px 1px 1px #00000005, 0px 8px 16px -4px #0000000a,
+    0px 24px 32px -8px #0000000f, 0 0 0 1px hsl(0 0% 0%);
+  --ds-shadow-tooltip:
+    0 0 0 1px #ffffff25, 0px 1px 1px #00000005, 0px 4px 8px #0000000a,
+    0 0 0 1px hsl(0 0% 0%);
+
+  /* — 2. Studio semantic layer — */
+  --bg: var(--ds-background-200); /* page */
+  --bg-subtle: var(--ds-gray-100); /* sunken wells, inputs */
+  --bg-raised: var(--ds-background-100); /* panels, cards, popovers */
+  --bg-hover: var(--ds-gray-alpha-100);
+  --bg-active: var(--ds-gray-alpha-200);
+  --line: var(--ds-gray-200);
+  --line-strong: var(--ds-gray-400);
+  --ink: var(--ds-gray-1000);
+  --ink-2: var(--ds-gray-900);
+  --ink-3: var(--ds-gray-700);
+
+  --accent-z: var(--ds-gray-1000);
+  --accent-z-fg: var(--ds-background-100);
+  --accent-z-soft: var(--ds-gray-alpha-200);
+  --link-z: var(--ds-blue-900);
+
+  --ok: var(--ds-green-900);
+  --ok-soft: var(--ds-green-200);
+  --ok-line: var(--ds-green-400);
+  --warn: var(--ds-amber-900);
+  --warn-soft: var(--ds-amber-200);
+  --warn-line: var(--ds-amber-400);
+  --err: var(--ds-red-900);
+  --err-soft: var(--ds-red-200);
+  --err-line: var(--ds-red-400);
+  --info: var(--ds-blue-900);
+  --info-soft: var(--ds-blue-200);
+
+  --method-get: var(--ds-blue-900);
+  --method-post: var(--ds-green-900);
+  --method-put: var(--ds-amber-900);
+  --method-patch: var(--ds-teal-900);
+  --method-delete: var(--ds-red-900);
+  --method-ws: var(--ds-purple-900);
+
+  --syntax-key: var(--ds-blue-900);
+  --syntax-str: var(--ds-teal-900);
+  --syntax-num: var(--ds-amber-900);
+  --syntax-fn: var(--ds-purple-900);
+  --syntax-kw: var(--ds-pink-900);
+  --syntax-tag: var(--ds-red-900);
+  --syntax-comment: var(--ds-gray-700);
+  --syntax-punct: var(--ds-gray-800);
+
+  /* Modal scrim. Vercel dims to near-black in dark; light theme needs a lighter
+     veil or the page reads as switched-off. */
+  --overlay: hsl(0 0% 0% / 0.6);
+
+  /* CodeMirror consumes these two directly. */
+  --primary-soft: var(--ds-gray-alpha-200);
+  --method-options: var(--ds-purple-900);
+
+  /* — 3. shadcn semantic layer — */
+  --background: var(--bg);
+  --foreground: var(--ink);
+  --card: var(--bg-raised);
+  --card-foreground: var(--ink);
+  --popover: var(--bg-raised);
+  --popover-foreground: var(--ink);
+  --primary: var(--accent-z);
+  --primary-foreground: var(--accent-z-fg);
+  --secondary: var(--ds-gray-100);
+  --secondary-foreground: var(--ink);
+  --muted: var(--ds-gray-100);
+  --muted-foreground: var(--ink-3);
+  --accent: var(--bg-hover);
+  --accent-foreground: var(--ink);
+  --destructive: var(--err);
+  --destructive-foreground: var(--ds-red-1000);
+  --border: var(--line);
+  --input: var(--line-strong);
+  --ring: var(--ds-focus-color);
+
+  --sidebar: var(--bg);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--accent-z);
+  --sidebar-primary-foreground: var(--accent-z-fg);
+  --sidebar-accent: var(--bg-hover);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--ds-focus-color);
+
+  --chart-1: var(--ds-blue-900);
+  --chart-2: var(--ds-teal-900);
+  --chart-3: var(--ds-purple-900);
+  --chart-4: var(--ds-amber-900);
+  --chart-5: var(--ds-pink-900);
+
+  /* Geist radii: sm 4 / md 6 / lg 8. Controls sit at 6px, so --radius = 6px
+     and shadcn's `rounded-lg` on Button lands exactly on Vercel's button. */
+  --radius: 0.375rem;
+
+  /* — 4. Motion, lifted from Vercel — */
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  /* Vercel's panel/collapse curve — overshoot-free, settles softly. */
+  --ease-panel: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-instant: 75ms;
+  --dur-fast: 100ms;
+  --dur-base: 150ms;
+  --dur-slow: 250ms;
+  --dur-panel: 350ms;
+
+  /* Scroll-fog size, matching Vercel's sidebar */
+  --fog-size: 40px;
+
+  color-scheme: dark;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   LIGHT ("paper") — Vercel light-theme
+   ───────────────────────────────────────────────────────────────────────── */
+[data-theme="paper"] {
+  --ds-background-100: hsl(0 0% 100%);
+  --ds-background-200: hsl(0 0% 98%);
+
+  --ds-gray-100: hsl(0 0% 95%);
+  --ds-gray-200: hsl(0 0% 92%);
+  --ds-gray-300: hsl(0 0% 90%);
+  --ds-gray-400: hsl(0 0% 92%);
+  --ds-gray-500: hsl(0 0% 79%);
+  --ds-gray-600: hsl(0 0% 66%);
+  --ds-gray-700: hsl(0 0% 56%);
+  --ds-gray-800: hsl(0 0% 49%);
+  --ds-gray-900: hsl(0 0% 30%);
+  --ds-gray-1000: hsl(0 0% 9%);
+
+  --ds-gray-alpha-100: #0000000d;
+  --ds-gray-alpha-200: #00000014;
+  --ds-gray-alpha-300: #0000001a;
+  --ds-gray-alpha-400: #00000014;
+  --ds-gray-alpha-500: #00000036;
+  --ds-gray-alpha-600: #00000057;
+  --ds-gray-alpha-700: #00000070;
+  --ds-gray-alpha-800: #00000082;
+  --ds-gray-alpha-900: #000000b3;
+  --ds-gray-alpha-1000: #000000e8;
+
+  --ds-blue-100: hsl(212 100% 97%);
+  --ds-blue-200: hsl(210 100% 96%);
+  --ds-blue-300: hsl(210 100% 94%);
+  --ds-blue-400: hsl(209 100% 90%);
+  --ds-blue-500: hsl(209 100% 80%);
+  --ds-blue-600: hsl(208 100% 66%);
+  --ds-blue-700: hsl(212 100% 48%);
+  --ds-blue-800: hsl(212 100% 41%);
+  --ds-blue-900: hsl(211 100% 42%);
+  --ds-blue-1000: hsl(211 100% 15%);
+
+  --ds-red-100: hsl(0 100% 97%);
+  --ds-red-200: hsl(0 100% 96%);
+  --ds-red-300: hsl(0 100% 95%);
+  --ds-red-400: hsl(0 90% 92%);
+  --ds-red-500: hsl(0 82% 85%);
+  --ds-red-600: hsl(359 90% 71%);
+  --ds-red-700: hsl(358 75% 59%);
+  --ds-red-800: hsl(358 70% 52%);
+  --ds-red-900: hsl(358 66% 48%);
+  --ds-red-1000: hsl(355 49% 15%);
+
+  --ds-amber-100: hsl(39 100% 95%);
+  --ds-amber-200: hsl(44 100% 92%);
+  --ds-amber-300: hsl(43 96% 90%);
+  --ds-amber-400: hsl(42 100% 78%);
+  --ds-amber-500: hsl(38 100% 71%);
+  --ds-amber-600: hsl(36 90% 62%);
+  --ds-amber-700: hsl(39 100% 57%);
+  --ds-amber-800: hsl(35 100% 52%);
+  --ds-amber-900: hsl(30 100% 32%);
+  --ds-amber-1000: hsl(20 79% 17%);
+
+  --ds-green-100: hsl(120 60% 96%);
+  --ds-green-200: hsl(120 60% 95%);
+  --ds-green-300: hsl(120 60% 91%);
+  --ds-green-400: hsl(122 60% 86%);
+  --ds-green-500: hsl(124 60% 75%);
+  --ds-green-600: hsl(125 60% 64%);
+  --ds-green-700: hsl(131 41% 46%);
+  --ds-green-800: hsl(132 43% 39%);
+  --ds-green-900: hsl(133 50% 32%);
+  --ds-green-1000: hsl(128 29% 15%);
+
+  --ds-teal-100: hsl(169 70% 96%);
+  --ds-teal-200: hsl(167 70% 94%);
+  --ds-teal-300: hsl(168 70% 90%);
+  --ds-teal-400: hsl(170 70% 85%);
+  --ds-teal-500: hsl(170 70% 72%);
+  --ds-teal-600: hsl(170 70% 57%);
+  --ds-teal-700: hsl(173 80% 36%);
+  --ds-teal-800: hsl(173 83% 30%);
+  --ds-teal-900: hsl(174 91% 25%);
+  --ds-teal-1000: hsl(171 80% 13%);
+
+  --ds-purple-100: hsl(276 100% 97%);
+  --ds-purple-200: hsl(277 87% 97%);
+  --ds-purple-300: hsl(274 78% 95%);
+  --ds-purple-400: hsl(276 71% 92%);
+  --ds-purple-500: hsl(274 70% 82%);
+  --ds-purple-600: hsl(273 72% 73%);
+  --ds-purple-700: hsl(272 51% 54%);
+  --ds-purple-800: hsl(272 47% 45%);
+  --ds-purple-900: hsl(274 71% 43%);
+  --ds-purple-1000: hsl(276 100% 15%);
+
+  --ds-pink-700: hsl(336 80% 58%);
+  --ds-pink-900: hsl(336 75% 40%);
+
+  --ds-focus-color: hsl(212 100% 48%);
+  --ds-focus-ring: 0 0 0 2px hsl(0 0% 100%), 0 0 0 4px hsl(212 100% 48%);
+  --ds-shadow-border: 0 0 0 1px #00000014;
+  --ds-shadow-small: 0px 1px 2px #0000000f;
+  --ds-shadow-medium: 0px 2px 2px #0000000a, 0px 8px 8px -8px #0000000f;
+  --ds-shadow-large: 0px 2px 2px #0000000a, 0px 8px 16px -4px #0000000a;
+  --ds-shadow-menu:
+    0 0 0 1px #00000014, 0px 1px 1px #00000005, 0px 4px 8px -4px #0000000a,
+    0px 16px 24px -8px #0000000f;
+  --ds-shadow-modal:
+    0 0 0 1px #00000014, 0px 1px 1px #00000005, 0px 8px 16px -4px #0000000a,
+    0px 24px 32px -8px #0000000f;
+  --ds-shadow-tooltip:
+    0 0 0 1px #00000014, 0px 1px 1px #00000005, 0px 4px 8px #0000000a;
+
+  --destructive-foreground: var(--ds-red-1000);
+  --overlay: hsl(0 0% 20% / 0.28);
+
+  color-scheme: light;
+}
