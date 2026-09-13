@@ -68,7 +68,7 @@ export function DialogFrame({
         }}
         style={{ width, ...(top != null ? { top, transform: "translateX(-50%)" } : null) }}
         className={cn(
-          "flex max-h-[85vh] flex-col gap-0 overflow-hidden rounded-2xl bg-ds-background-100 p-0",
+          "flex max-h-[85dvh] flex-col gap-0 overflow-hidden rounded-2xl bg-ds-background-100 p-0",
           "max-w-[calc(100vw-2rem)] text-base text-ink shadow-[var(--ds-shadow-modal)] sm:max-w-[calc(100vw-2rem)]",
           "duration-[var(--dur-base)] ease-[var(--ease-out)]",
         )}

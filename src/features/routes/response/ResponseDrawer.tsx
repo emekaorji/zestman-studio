@@ -301,7 +301,14 @@ export function ResponseDrawer({ tab, route }: { tab: OpenTab; route: Route }) {
       ref={rootRef}
       data-collapsed={drawerCollapsed || undefined}
       className="relative flex shrink-0 flex-col border-t border-line bg-canvas [transition:height_var(--dur-panel)_var(--ease-panel)] [.panel-dragging_&]:transition-none"
-      style={{ height: drawerCollapsed ? COLLAPSED_BAR_H : `var(--drawer-h)` }}
+      style={{
+        height: drawerCollapsed ? COLLAPSED_BAR_H : `var(--drawer-h)`,
+        /* The request above the drawer needs ~300px (tabs, title, URL row,
+           request tabs). On a short screen — a phone in landscape — the drawer
+           yields that first, down to its usable minimum, instead of squeezing
+           the request out of existence. Tall screens cap at 55% as before. */
+        maxHeight: drawerCollapsed ? undefined : "clamp(120px, calc(100dvh - 300px), 55dvh)",
+      }}
     >
       <ResizeHandle
         side="bottom"

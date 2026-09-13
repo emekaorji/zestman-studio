@@ -1,6 +1,7 @@
 import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
 import { Fragment } from "react";
 import { cn } from "@/lib/utils";
+import { useMediaQuery } from "@/lib/useMediaQuery";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export interface ColumnDef<Row> {
@@ -11,6 +12,12 @@ export interface ColumnDef<Row> {
   align?: "left" | "right" | "center";
   /** Render this column's cells in Geist Mono 13/20 (ids, paths, timings). */
   mono?: boolean;
+  /**
+   * Drop this column below a breakpoint. For secondary columns only: on a phone
+   * a table scrolls sideways, and a column like "Type" or "Source" should step
+   * aside rather than push the one you came for off-screen.
+   */
+  hideBelow?: "sm" | "md" | "lg" | "xl";
   cell: (row: Row) => ReactNode;
 }
 
@@ -44,7 +51,7 @@ function moveRowFocus(from: HTMLTableRowElement, dir: 1 | -1) {
  * table becomes a grid whose rows are focusable and activate on Enter/Space.
  */
 export function DataTable<Row>({
-  columns,
+  columns: allColumns,
   rows,
   groups,
   rowKey,
@@ -76,6 +83,15 @@ export function DataTable<Row>({
   /** Give the table its own scroll region of this height, with scroll fog. */
   maxHeight?: number;
 }) {
+  // Tailwind's breakpoints. Always called, so hook order never changes.
+  const atLeast = {
+    sm: useMediaQuery("(min-width: 640px)"),
+    md: useMediaQuery("(min-width: 768px)"),
+    lg: useMediaQuery("(min-width: 1024px)"),
+    xl: useMediaQuery("(min-width: 1280px)"),
+  };
+  const columns = allColumns.filter((c) => !c.hideBelow || atLeast[c.hideBelow]);
+
   const interactive = onRowClick != null;
   const last = columns.length - 1;
 
@@ -161,13 +177,30 @@ export function DataTable<Row>({
     );
   };
 
-  const colStyle = (c: ColumnDef<Row>): CSSProperties | undefined =>
-    c.width != null ? { width: c.width } : undefined;
+  /* On a phone a 240px "Name" column is two-thirds of the screen and shoves the
+     column you came for (Value, Reference) out of view. Cap wide fixed columns
+     there; their cells already truncate. Narrow ones (method, status) are left. */
+  const PHONE_COL_CAP = 140;
+  const colWidth = (c: ColumnDef<Row>) =>
+    c.width == null ? undefined : atLeast.sm ? c.width : Math.min(c.width, PHONE_COL_CAP);
+  const colStyle = (c: ColumnDef<Row>): CSSProperties | undefined => {
+    const w = colWidth(c);
+    return w != null ? { width: w } : undefined;
+  };
+
+  /* Fixed columns cannot shrink below their content, so on a narrow viewport
+     the table scrolls sideways instead of crushing every column into
+     unreadable slivers. The floor is the declared widths plus room for the
+     flexible ones. */
+  const fixedTotal = columns.reduce((n, c) => n + (colWidth(c) ?? 0), 0);
+  const flexCount = columns.filter((c) => c.width == null).length;
+  const minWidth = fixedTotal + flexCount * 180;
 
   const body = (
     <Table
       role={interactive ? "grid" : undefined}
       aria-label={label}
+      style={{ minWidth }}
       className="w-full table-fixed border-separate border-spacing-0 text-base"
     >
       <colgroup>
@@ -230,7 +263,9 @@ export function DataTable<Row>({
       )}
       style={maxHeight != null ? { maxHeight } : undefined}
     >
-      {body}
+      {/* Sideways scroll lives on its own element so the sticky header keeps
+          pinning to the vertical scroller above it. */}
+      <div className="fade-scroll-x min-w-0 overflow-x-auto">{body}</div>
     </div>
   );
 }

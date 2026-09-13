@@ -28,7 +28,7 @@ import { CodeEditor } from "@/lib/codemirror/CodeEditor";
 
 function PageBody({ children }: { children: ReactNode }) {
   return (
-    <div className="fade-scroll min-h-0 flex-1 overflow-y-auto px-7 pt-6 pb-10">{children}</div>
+    <div className="fade-scroll min-h-0 flex-1 overflow-y-auto px-4 sm:px-7 pt-6 pb-10">{children}</div>
   );
 }
 
@@ -269,9 +269,9 @@ function DocumentTab() {
 
   return (
     <PageBody>
-      <div className="flex min-h-9 items-center gap-3">
+      <div className="flex min-h-9 flex-wrap items-center gap-x-3 gap-y-2">
         <h1 className="shrink-0 text-md font-semibold text-ink">OpenAPI 3.0.3</h1>
-        <span className="min-w-0 truncate text-xs text-ink-3">
+        <span className="min-w-0 truncate text-xs text-ink-3 max-md:order-last max-md:basis-full">
           generated 2 m ago · 14 paths · 27 operations · merged with api.yaml (3 ops)
         </span>
         <div className="ml-auto flex shrink-0 items-center gap-2">
@@ -697,7 +697,7 @@ export function SpecsPage() {
       <TabStrip<SpecsTab>
         label="Spec views"
         variant="page"
-        className="px-7"
+        className="px-4 sm:px-7"
         tabs={[
           { id: "document", label: "Document" },
           { id: "timeline", label: "Timeline" },

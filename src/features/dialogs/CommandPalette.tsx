@@ -132,7 +132,7 @@ function PaletteInner() {
          the shadcn Dialog's own zoom-in-95. */
       style={{ "--tw-enter-scale": 0.98, "--tw-exit-scale": 0.98 } as CSSProperties}
       className={cn(
-        "top-[13vh] flex w-[760px] max-w-[calc(100vw-2rem)] translate-y-0 flex-col gap-0 overflow-hidden",
+        "top-[8dvh] flex w-[760px] max-w-[calc(100vw-2rem)] translate-y-0 flex-col gap-0 overflow-hidden sm:top-[13dvh]",
         "rounded-2xl bg-ds-background-100 p-0 text-base text-ink ring-0 sm:max-w-[calc(100vw-2rem)]",
         "shadow-[var(--ds-shadow-modal)] duration-[var(--dur-base)] ease-[var(--ease-out)]",
       )}

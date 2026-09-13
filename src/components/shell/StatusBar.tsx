@@ -53,7 +53,9 @@ export function StatusBar() {
               </TooltipContent>
             </Tooltip>
           ) : null}
-          <span className="truncate font-mono">
+          {/* The path is context, not function — on a phone it truncates to "~/…"
+              and says nothing, so it goes. */}
+          <span className="truncate font-mono max-sm:hidden">
             {project?.rootPath ?? "~"} · {env?.name ?? "—"} · {baseUrl}
           </span>
         </div>
@@ -61,10 +63,10 @@ export function StatusBar() {
         <div className="flex shrink-0 items-center gap-3">
           <span className="flex items-center gap-1.5">
             <Dot tone="ok" />
-            watching
+            <span className="max-sm:sr-only">watching</span>
           </span>
           <span className="font-mono">
-            {httpCount} routes · {fileCount} files · 0.1.0
+            {httpCount} routes<span className="max-md:hidden"> · {fileCount} files · 0.1.0</span>
           </span>
         </div>
       </footer>

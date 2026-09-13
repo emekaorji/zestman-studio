@@ -102,18 +102,18 @@ function PageFrame({
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 px-7 pt-5">
+      <div className="shrink-0 px-4 sm:px-7 pt-5">
         {lead}
-        <div className={cn("flex h-9 items-center gap-3", lead && "mt-2")}>
+        <div className={cn("flex min-h-9 flex-wrap items-center gap-x-3 gap-y-2", lead && "mt-2")}>
           <h1 className="shrink-0 text-md font-semibold text-ink">{title}</h1>
           {meta ? <span className="min-w-0 truncate text-base text-ink-3">{meta}</span> : null}
           {actions ? <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div> : null}
         </div>
         {banner ? <div className="mt-3">{banner}</div> : null}
       </div>
-      <div className="fade-scroll min-h-0 flex-1 overflow-y-auto px-7 pt-2 pb-10">{children}</div>
+      <div className="fade-scroll min-h-0 flex-1 overflow-y-auto px-4 sm:px-7 pt-2 pb-10">{children}</div>
       {footer ? (
-        <div className="flex h-8 shrink-0 items-center gap-1.5 border-t border-line px-7 font-mono text-xs text-ink-3">
+        <div className="flex h-8 shrink-0 items-center gap-1.5 border-t border-line px-4 sm:px-7 font-mono text-xs text-ink-3 min-w-0 overflow-hidden whitespace-nowrap [&>*]:min-w-0 [&>*]:truncate">
           {footer}
         </div>
       ) : null}
@@ -299,7 +299,7 @@ function EntryDetail({ entry }: { entry: HistoryEntry }) {
 
   return (
     <div className="fade-scroll min-h-0 flex-1 overflow-y-auto">
-      <div className="flex flex-col px-7 pt-5 pb-16">
+      <div className="flex flex-col px-4 sm:px-7 pt-5 pb-16">
         <BackLink onClick={() => navigate({ go: "history", mode: "recorded" })}>
           {dayLabel} · {clockTime(entry.at)}
         </BackLink>

@@ -40,11 +40,14 @@ export interface NavSlice {
   pushDialog: (d: DialogInstance) => void;
   popDialog: () => void;
   setPaletteOpen: (open: boolean) => void;
-  /** Esc semantics: top dialog → palette → nothing. Returns true if consumed. */
+  /** Esc semantics: top dialog → palette → open sheet → nothing. Returns true if consumed. */
   escape: () => boolean;
 }
 
 const MAX_BACK = 20;
+
+/** Sections that render a level-2 sidebar (see SIDEBARS in app/App.tsx). */
+const SECTIONS_WITH_SIDEBAR = new Set<SectionId>(["routes", "docs", "tests", "mocks", "history", "environment"]);
 
 export const createNavSlice: StateCreator<StudioStore, [], [], NavSlice> = (set, get) => ({
   section: "overview",
@@ -72,6 +75,12 @@ export const createNavSlice: StateCreator<StudioStore, [], [], NavSlice> = (set,
       set({
         // Any real navigation puts the sidebar back on the page's own level.
         sidebarRoot: false,
+        /* On a phone the panels are sheets. Reaching a destination closes them;
+           opening a section that has its own sidebar keeps the sheet up so you
+           can keep drilling in, as you would on a desktop. */
+        sidebarOverlayOpen:
+          cmd.go === "section" && SECTIONS_WITH_SIDEBAR.has(cmd.section) ? s.sidebarOverlayOpen : false,
+        railOverlayOpen: false,
         section,
         sections: { ...s.sections, ...sections },
         backStack:
@@ -173,6 +182,12 @@ export const createNavSlice: StateCreator<StudioStore, [], [], NavSlice> = (set,
     }
     if (s.paletteOpen) {
       s.setPaletteOpen(false);
+      return true;
+    }
+    // A sheet over the content (narrow viewports) dismisses like a dialog.
+    if (s.sidebarOverlayOpen || s.railOverlayOpen) {
+      s.setSidebarOverlayOpen(false);
+      s.setRailOverlayOpen(false);
       return true;
     }
     return false;

@@ -20,6 +20,11 @@ export interface SessionSlice {
   onboarded: boolean;
   /** Sidebar shows its top-level nav without leaving the current page. */
   sidebarRoot: boolean;
+  /** Narrow viewports float the panels over the content instead of beside it.
+      These are transient — never persisted, so a phone visit cannot overwrite
+      the collapse preferences you set on a desktop. */
+  sidebarOverlayOpen: boolean;
+  railOverlayOpen: boolean;
 
   setTheme: (t: ThemeId) => void;
   toggleSidebar: () => void;
@@ -34,6 +39,8 @@ export interface SessionSlice {
   setRailTab: (tab: RailTab) => void;
   setOnboarded: (v: boolean) => void;
   setSidebarRoot: (v: boolean) => void;
+  setSidebarOverlayOpen: (v: boolean) => void;
+  setRailOverlayOpen: (v: boolean) => void;
 
   /** Back-compat aliases used across features. */
   sidebarVisible: boolean;
@@ -63,6 +70,8 @@ export const createSessionSlice: StateCreator<StudioStore, [], [], SessionSlice>
   railTab: ui.railTab,
   onboarded: ui.onboarded,
   sidebarRoot: false,
+  sidebarOverlayOpen: false,
+  railOverlayOpen: false,
 
   setTheme: (t) => {
     applyTheme(t);
@@ -84,6 +93,8 @@ export const createSessionSlice: StateCreator<StudioStore, [], [], SessionSlice>
   setRailTab: (tab) => set({ railTab: tab }),
   setOnboarded: (v) => set({ onboarded: v }),
   setSidebarRoot: (v) => set({ sidebarRoot: v }),
+  setSidebarOverlayOpen: (v) => set({ sidebarOverlayOpen: v }),
+  setRailOverlayOpen: (v) => set({ railOverlayOpen: v }),
 
   sidebarVisible: !ui.sidebarCollapsed,
   railOpen: !ui.railCollapsed,

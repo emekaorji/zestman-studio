@@ -94,7 +94,8 @@ export function KeyValueTable<Row extends KVRow>({
   );
 
   return (
-    <div ref={rootRef} className={cn("min-w-0", className)}>
+    // The table has a floor width so columns never crush; below it, scroll sideways.
+    <div ref={rootRef} className={cn("fade-scroll-x min-w-0 overflow-x-auto", className)}>
       <Table
         aria-label={label}
         className="w-full table-fixed border-separate border-spacing-0 text-base"

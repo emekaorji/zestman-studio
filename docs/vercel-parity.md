@@ -128,6 +128,38 @@ collapsed to nothing and brought back. Vercel's mechanism, which we copy:
 
 Use `@/components/shell/ResizablePanel` — do not re-implement it per panel.
 
+## Responsive
+
+The design is drawn at desktop width. Below it, the studio adapts rather than
+shrinks — nothing is redesigned, panels change *mode* and content reflows.
+
+| Width | Sidebar | Rail | Notes |
+| --- | --- | --- | --- |
+| < 768, or < 500 tall | sheet | sheet | phones, incl. landscape |
+| 768 – 1279 | inline | sheet | iPad, resized laptop window |
+| ≥ 1280 | inline | inline | the drawn layout |
+
+Rules, all enforced somewhere central — follow them, do not re-solve per page:
+
+- **Panels** switch between inline and overlay in `Shell` via `useLayout()`
+  (`lib/useMediaQuery.ts`). Overlay open state (`sidebarOverlayOpen`,
+  `railOverlayOpen`) is transient and **never persisted**, so a phone visit
+  cannot overwrite desktop collapse preferences. Reaching a destination closes a
+  sheet; Escape and the scrim close it too.
+- **Tables** scroll sideways inside `DataTable` with a width floor, never crush.
+  Mark secondary columns `hideBelow: "sm" | "md" | …`. Below `sm`, fixed columns
+  wider than 140px are capped (their cells already truncate) so the key column
+  stays in view.
+- **Title / toolbar rows**: `flex-wrap` + `min-h-*` (or `minHeight`), never a
+  fixed height with `shrink-0` actions — that clips on a phone.
+- **Heights** use `dvh`, not `vh` or `%`, so mobile browser chrome never hides
+  the status bar or a dialog's footer.
+- **Touch** (`pointer: coarse`): drag separators are hidden; hover-revealed panel
+  toggles are always visible; `touch-action: manipulation` removes tap delay.
+- **Never put `.fade-scroll` on an element that also paints an opaque
+  background.** The mask makes that background transparent at the fogged edge
+  and whatever is behind shows through. Fog an inner scroller instead.
+
 ## React 19
 
 The studio runs React 19. This is a hard requirement of the shadcn components in

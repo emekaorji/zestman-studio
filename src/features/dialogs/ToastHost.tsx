@@ -76,6 +76,9 @@ export function ToastHost() {
       /* Clear the status bar by a full gutter — at offset 16 the bottom card
          sits flush against it and the two read as one strip. */
       offset={STATUS_H + 16}
+      /* Sonner switches to a full-width stack on small screens and uses its own
+         offset there; without this the toast sits on top of the status bar. */
+      mobileOffset={{ bottom: STATUS_H + 12, left: 12, right: 12 }}
       gap={8}
       duration={DURATION}
       visibleToasts={4}

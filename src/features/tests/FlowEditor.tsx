@@ -176,9 +176,9 @@ export function FlowEditor({ flowId, run }: { flowId: string | null; run: boolea
         </span>
       </PageHead>
 
-      <div className="mt-4 flex flex-wrap items-start gap-6">
+      <div className="mt-4 flex flex-col items-stretch gap-6 lg:flex-row lg:items-start">
         {/* Steps column */}
-        <div className="w-[380px] shrink-0">
+        <div className="w-full min-w-0 shrink-0 lg:w-[380px]">
           <SectionLabel>Steps · {flow.steps.length}</SectionLabel>
           <div className="flex flex-col gap-1.5">
             {flow.steps.map((step, i) => (

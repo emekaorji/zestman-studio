@@ -11,7 +11,15 @@ import { cn } from "@/lib/utils";
 
 function Stat({ value, label, ok = false }: { value: string; label: string; ok?: boolean }) {
   return (
-    <div className="flex flex-1 flex-col gap-1.5 border-l border-line px-6 first:border-l-0 first:pl-0">
+    <div
+      className={cn(
+        "flex flex-col gap-1.5 border-line px-6 first:pl-0",
+        // 4-up needs ~1000px. Below that it wraps, and the dividing rule has to
+        // follow: a left border on a wrapped item draws a line to nowhere.
+        "min-w-[calc(50%-0.75rem)] flex-1 border-l max-lg:[&:nth-child(odd)]:border-l-0",
+        "max-sm:min-w-full max-sm:border-l-0 max-sm:pl-0",
+      )}
+    >
       <span className={cn("text-xl font-semibold tabular-nums", ok ? "text-ok" : "text-ink")}>{value}</span>
       <span className="truncate text-base text-ink-3">{label}</span>
     </div>
@@ -112,9 +120,9 @@ export function OverviewPage() {
 
   return (
     <div className="fade-scroll min-h-0 flex-1 overflow-y-auto">
-      <div className="flex flex-col gap-8 px-7 pt-6 pb-16">
+      <div className="flex flex-col gap-8 px-4 sm:px-7 pt-6 pb-16">
         {/* stat strip */}
-        <div className="flex items-stretch">
+        <div className="flex flex-wrap items-stretch gap-y-5">
           <Stat value={String(project?.routeCount ?? routes.length)} label={`routes · ${fileCount} source files`} />
           <Stat value="100%" label={`discovered · ${diagCount} diagnostics`} />
           <Stat value="27/27" label="last run-all · 2 m ago" ok />
@@ -174,7 +182,7 @@ export function OverviewPage() {
         </section>
 
         {/* bottom blocks */}
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           <section>
             <SectionHead>Mock server</SectionHead>
             <div className="flex h-12 items-center gap-2">

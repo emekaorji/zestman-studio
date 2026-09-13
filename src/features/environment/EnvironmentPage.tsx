@@ -36,12 +36,12 @@ function PageFrame({
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-9 shrink-0 items-center gap-3 px-7 mt-5">
+      <div className="mt-5 flex min-h-9 shrink-0 flex-wrap items-center gap-x-3 gap-y-2 px-4 sm:px-7">
         <h1 className="shrink-0 text-md font-semibold text-ink">{title}</h1>
         {meta ? <span className="min-w-0 truncate text-base text-ink-3">{meta}</span> : null}
         {actions ? <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div> : null}
       </div>
-      <div className="fade-scroll min-h-0 flex-1 overflow-y-auto px-7 pt-4 pb-16">{children}</div>
+      <div className="fade-scroll min-h-0 flex-1 overflow-y-auto px-4 sm:px-7 pt-4 pb-16">{children}</div>
     </div>
   );
 }
@@ -105,6 +105,8 @@ function VarsTable({
       id: "type",
       header: "Type",
       width: 110,
+      // Secret-ness already shows in the value cell; on a phone Value matters more.
+      hideBelow: "sm",
       cell: (v) =>
         v.type === "secret" ? <Pill tone="warn">secret</Pill> : <span className="text-base text-ink-3">default</span>,
     },

@@ -84,7 +84,7 @@ export function ScanOnboarding() {
 
   if (done) {
     return (
-      <div className="fade-scroll absolute inset-0 z-50 flex flex-col items-center overflow-y-auto bg-canvas">
+      <div className="absolute inset-0 z-50 flex flex-col items-center overflow-y-auto bg-canvas">
         <div
           className={cn(
             "flex w-180 max-w-[calc(100vw-4rem)] shrink-0 flex-col items-center pt-32",
@@ -166,12 +166,13 @@ export function ScanOnboarding() {
           </Button>
         </div>
 
-        <div className="mt-auto shrink-0 pt-10 pb-10">
+        <div className="mt-auto flex w-full max-w-[calc(100vw-2rem)] shrink-0 justify-center pt-10 pb-10">
           <Button
             variant="ghost"
             size="lg"
             onClick={goDiagnostics}
-            className="font-mono text-xs font-normal text-ink-3 transition-colors duration-[var(--dur-base)] ease-[var(--ease-in-out)] hover:text-ink-2"
+            // A button is nowrap by default; this sentence is wider than a phone.
+            className="h-auto max-w-full px-4 py-2 text-center font-mono text-xs leading-5 font-normal whitespace-normal text-ink-3 transition-colors duration-[var(--dur-base)] ease-[var(--ease-in-out)] hover:text-ink-2"
           >
             3 routes could not be resolved statically — see Diagnostics
           </Button>
@@ -181,7 +182,7 @@ export function ScanOnboarding() {
   }
 
   return (
-    <div className="fade-scroll absolute inset-0 z-50 flex flex-col items-center overflow-y-auto bg-canvas">
+    <div className="absolute inset-0 z-50 flex flex-col items-center overflow-y-auto bg-canvas">
       <div className="flex w-180 max-w-[calc(100vw-4rem)] shrink-0 flex-col pt-31 animate-in fade-in-0 duration-[var(--dur-slow)] ease-[var(--ease-out)]">
         <div className="flex items-baseline justify-center gap-2.5">
           <span className="text-xl font-semibold text-ink">Zestman</span>

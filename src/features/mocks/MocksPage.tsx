@@ -25,7 +25,7 @@ const MOCK_STATUS_CODES = [200, 201, 204, 400, 401, 403, 404, 409, 422, 500, 503
 /* ── Page frame (mirrors the Tests/Specs frame: one scroller, 28px gutter) ── */
 
 function PageBody({ children }: { children: ReactNode }) {
-  return <div className="fade-scroll h-full min-h-0 overflow-y-auto px-7 pt-6 pb-10">{children}</div>;
+  return <div className="fade-scroll h-full min-h-0 overflow-y-auto px-4 sm:px-7 pt-6 pb-10">{children}</div>;
 }
 
 function SectionLabel({ children, className }: { children: ReactNode; className?: string }) {
@@ -147,7 +147,7 @@ function MocksHome() {
 
   return (
     <PageBody>
-      <div className="flex min-h-9 items-center gap-3">
+      <div className="flex min-h-9 flex-wrap items-center gap-x-3 gap-y-2">
         <h1 className="shrink-0 text-md font-semibold text-ink">Mock server</h1>
         <span className="flex shrink-0 items-center gap-1.5 text-base text-ink-2">
           <Dot tone={running ? "ok" : "muted"} />
@@ -310,10 +310,12 @@ function MockEditor({ mock }: { mock: Mock }) {
         Mocks
       </Button>
 
-      <div className="mt-4 flex min-h-9 items-center gap-3">
+      <div className="mt-4 flex min-h-9 flex-wrap items-center gap-x-3 gap-y-2">
         <h1 className="shrink-0 text-md font-semibold text-ink">{mock.name}</h1>
         <MethodBadge method={route?.method ?? "GET"} />
-        <span className="min-w-0 truncate font-mono text-sm text-ink-2">{route?.path}</span>
+        <span className="min-w-0 truncate font-mono text-sm text-ink-2 max-sm:order-last max-sm:basis-full">
+          {route?.path}
+        </span>
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <Label htmlFor={`${statusId}-enabled`} className="text-base font-normal text-ink-2">
             Enabled

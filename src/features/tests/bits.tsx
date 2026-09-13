@@ -43,7 +43,7 @@ export function BackLink({
 /** The one page scroller: Vercel's 28px gutter, scroll fog at both edges. */
 export function PageBody({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn("fade-scroll h-full min-h-0 overflow-y-auto px-7 pt-6 pb-10", className)}>
+    <div className={cn("fade-scroll h-full min-h-0 overflow-y-auto px-4 sm:px-7 pt-6 pb-10", className)}>
       {children}
     </div>
   );

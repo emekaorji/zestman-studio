@@ -195,17 +195,24 @@ export function RouteEditor({ tab, route }: { tab: OpenTab; route: Route }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col px-6 pt-4">
+      {/* Scrolls as a whole when its fixed header (title, URL row, tabs) cannot
+          fit above the drawer — a phone in landscape has ~150px here. On a tall
+          screen it never overflows, so nothing changes. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-4 sm:px-6">
         <DocHeader tab={tab} route={route} />
 
         {/* URL row */}
-        <div className="mt-4 flex shrink-0 items-center gap-2" style={{ height: URL_ROW_H }}>
+        {/* Wraps below sm: a method select, a URL and a Send button will not
+            fit on one phone-width line without crushing the URL. */}
+        <div className="mt-4 flex h-9 shrink-0 flex-wrap items-center gap-2 max-sm:h-auto">
           <MethodSelect value={tab.draft.method} onChange={(method) => patchDraft(tab.id, { method })} />
-          <UrlInput
-            value={tab.draft.url}
-            onChange={(url) => patchDraft(tab.id, { url })}
-            onSubmit={() => void send(tab.id)}
-          />
+          <div className="min-w-0 flex-1 max-sm:order-3 max-sm:basis-full">
+            <UrlInput
+              value={tab.draft.url}
+              onChange={(url) => patchDraft(tab.id, { url })}
+              onSubmit={() => void send(tab.id)}
+            />
+          </div>
           {tab.sending ? (
             <GhostButton onClick={() => cancelSend(tab.id)}>Cancel</GhostButton>
           ) : null}
@@ -255,7 +262,9 @@ export function RouteEditor({ tab, route }: { tab: OpenTab; route: Route }) {
         />
 
         {/* panel */}
-        <div className="fade-scroll min-h-0 flex-1 overflow-y-auto pt-4 pb-6">
+        {/* 160px floor: without it a short screen collapses the panel to 0 and
+            there is nothing to scroll down to. */}
+        <div className="fade-scroll min-h-40 flex-1 overflow-y-auto pt-4 pb-6">
           <div
             key={tab.requestTab}
             className="flex min-h-0 flex-1 flex-col animate-in fade-in-0 duration-[var(--dur-base)] ease-[var(--ease-out)]"

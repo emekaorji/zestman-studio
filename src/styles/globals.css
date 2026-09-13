@@ -173,6 +173,9 @@
   body,
   #root {
     height: 100%;
+    /* Mobile browser chrome shrinks the visual viewport; dvh follows it so the
+       status bar is never hidden behind the URL bar. */
+    height: 100dvh;
   }
 
   html {
@@ -261,6 +264,22 @@
   }
   *::-webkit-scrollbar-thumb:hover {
     background-color: var(--ds-gray-500);
+  }
+
+  /* Touch input has no hover, so hover-revealed affordances never appear. */
+  @media (pointer: coarse) {
+    button,
+    [role="button"],
+    a[href] {
+      touch-action: manipulation;
+    }
+
+    /* Panel edges are drag targets; a finger cannot grab a 1px line, and the
+       toggle that lives on them only appears on hover. Both go; the top-nav
+       buttons already cover showing and hiding a panel. */
+    [role="separator"][aria-orientation] {
+      display: none;
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {

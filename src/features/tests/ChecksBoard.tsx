@@ -159,7 +159,7 @@ export function ChecksBoard() {
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
-      <div className="fade-scroll flex min-h-0 flex-1 flex-col overflow-y-auto px-7 pt-6 pb-8">
+      <div className="fade-scroll flex min-h-0 flex-1 flex-col overflow-y-auto px-4 sm:px-7 pt-6 pb-8">
         <PageHead
           title="Checks"
           sub="derived from your code — updated on every rescan"

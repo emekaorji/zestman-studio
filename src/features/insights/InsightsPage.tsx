@@ -145,7 +145,15 @@ function StatCell({
   className?: string;
 }) {
   return (
-    <div className={cn("flex flex-1 flex-col justify-between gap-2 border-l border-line px-6 first:border-l-0", className)}>
+    <div
+      className={cn(
+        "flex min-h-32 flex-1 flex-col justify-between gap-2 border-l border-line px-6 first:border-l-0",
+        // Wrapped rows start a new line: a left rule there points at nothing.
+        "max-xl:min-w-[calc(50%-0.75rem)] max-xl:[&:nth-child(odd)]:border-l-0 max-xl:[&:nth-child(odd)]:pl-0",
+        "max-sm:min-w-full max-sm:border-l-0 max-sm:pl-0",
+        className,
+      )}
+    >
       <span className="caps-label">{label}</span>
       <span className="text-xl font-semibold text-ink tabular-nums">{value}</span>
       {children}
@@ -159,7 +167,9 @@ function AnalyticsBand() {
   if (!insights) return null;
   const errPct = Math.max(2, Math.round(insights.errorRate * 100));
   return (
-    <div className="flex h-[168px] shrink-0 items-stretch border-b border-line px-7 py-5">
+    /* Four cards need ~1180px of content width. Below xl they wrap 2×2, below
+       sm they stack; the fixed height only applies once they sit in one row. */
+    <div className="flex shrink-0 flex-wrap items-stretch gap-y-5 border-b border-line px-4 py-5 sm:px-7 xl:h-[168px] xl:flex-nowrap">
       <StatCell
         label="Requests · Today"
         value={insights.requestsToday}
@@ -376,6 +386,8 @@ function TrafficTab() {
     {
       id: "source",
       header: "Source",
+      // Path and status are what you scan for; the file is one tap away.
+      hideBelow: "md",
       width: 240,
       cell: (r) => (
         <span className="truncate font-mono text-sm text-ink-3">{r.route.sourceLocations[0]?.file}</span>
@@ -445,9 +457,12 @@ function TrafficTab() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Toolbar */}
-      <div style={{ height: TOOLBAR_H }}
-        className="flex shrink-0 items-center gap-2 border-b border-line px-7">
-        <InputGroup className="h-9 w-[280px] shrink-0 border-line bg-ds-gray-100">
+      {/* ~900px of controls: one 52px row where it fits, wrapping rows where it
+          does not. minHeight (not height) so a wrapped toolbar grows instead of
+          clipping its second line. */}
+      <div style={{ minHeight: TOOLBAR_H }}
+        className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line px-4 py-2 sm:px-7 xl:py-0">
+        <InputGroup className="h-9 w-full shrink-0 border-line bg-ds-gray-100 sm:w-[280px]">
           <InputGroupAddon>
             <Search size={16} strokeWidth={1.5} className="text-ink-3" />
           </InputGroupAddon>
@@ -554,7 +569,7 @@ function TrafficTab() {
       <AnalyticsBand />
 
       {/* Grid */}
-      <div className="fade-scroll min-h-0 flex-1 overflow-y-auto px-7 pb-6">
+      <div className="fade-scroll min-h-0 flex-1 overflow-y-auto px-4 sm:px-7 pb-6">
         <DataTable<TrafficRow>
           label="Routes by module"
           rowHeight={dense ? 28 : 32}
@@ -572,7 +587,7 @@ function TrafficTab() {
       </div>
 
       {/* Footer */}
-      <div className="flex h-8 shrink-0 items-center gap-1.5 border-t border-line px-7 font-mono text-xs text-ink-3">
+      <div className="flex h-8 shrink-0 items-center gap-1.5 border-t border-line px-4 sm:px-7 font-mono text-xs text-ink-3 min-w-0 overflow-hidden whitespace-nowrap [&>*]:min-w-0 [&>*]:truncate">
         <span className="tabular-nums">
           27 routes · {selected.size} selected · p95 {insights?.p95 ?? "—"} ms ·
         </span>
@@ -643,6 +658,8 @@ function DiagnosticsTab() {
     {
       id: "source",
       header: "Source",
+      // Path and status are what you scan for; the file is one tap away.
+      hideBelow: "md",
       width: 260,
       cell: (r) =>
         r.kind === "diag" ? (
@@ -687,8 +704,8 @@ function DiagnosticsTab() {
       {/* Same shell as the Traffic toolbar (TOOLBAR_H, flush, hairline) so the
           two tabs do not jump when you switch between them. */}
       <div
-        style={{ height: TOOLBAR_H }}
-        className="flex shrink-0 items-center gap-3 border-b border-line px-7"
+        style={{ minHeight: TOOLBAR_H }}
+        className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-2 sm:px-7 lg:py-0"
       >
         <h1 className="shrink-0 text-md font-semibold text-ink">Diagnostics</h1>
         <span className="truncate text-base text-ink-3 tabular-nums">
@@ -710,7 +727,7 @@ function DiagnosticsTab() {
         </div>
       </div>
 
-      <div className="fade-scroll min-h-0 flex-1 overflow-y-auto px-7 pb-10">
+      <div className="fade-scroll min-h-0 flex-1 overflow-y-auto px-4 sm:px-7 pb-10">
         <DataTable<DiagRow>
           label="Diagnostics"
           columns={columns}
@@ -734,7 +751,7 @@ export function InsightsPage() {
       <TabStrip<InsightsTab>
         label="Insights views"
         variant="page"
-        className="px-7"
+        className="px-4 sm:px-7"
         tabs={[
           { id: "traffic", label: "Traffic" },
           { id: "coverage", label: "Coverage" },

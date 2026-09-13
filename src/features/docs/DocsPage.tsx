@@ -312,7 +312,7 @@ function ExamplesColumn({ route }: { route: Route }) {
   const okBody = example?.body ?? RESPONSE_BODIES[route.tags[0] ?? "app"] ?? RESPONSE_BODIES.app;
 
   return (
-    <div className="w-[400px] shrink-0 pl-10">
+    <div className="mt-10 w-full min-w-0 shrink-0 xl:mt-0 xl:w-[400px] xl:pl-10">
       <div className="flex items-center justify-between gap-3">
         <SegmentedControl
           size="sm"
@@ -372,7 +372,9 @@ function EndpointDoc({ route }: { route: Route }) {
 
   return (
     <div className="fade-scroll min-h-0 flex-1 overflow-y-auto">
-      <div className="flex min-w-0 px-10 pt-7 pb-16">
+      {/* The reference is two columns only when both fit; below that the
+          examples stack under the prose rather than squeezing it. */}
+      <div className="flex min-w-0 flex-col px-4 pt-7 pb-16 sm:px-7 xl:flex-row xl:px-10">
         {/* Center column */}
         <div className="min-w-0 max-w-[620px] flex-1">
           <div className="caps-label">{module === "app" ? "Other" : module}</div>
@@ -406,9 +408,9 @@ function EndpointDoc({ route }: { route: Route }) {
           <p className="mt-5 text-base leading-6 text-ink-2">{route.description}</p>
 
           {/* Provenance */}
-          <div className="mt-4 flex items-center gap-3">
+          <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
             {route.schemaRef ? (
-              <span className="inline-flex h-6 items-center gap-1.5 rounded-md bg-accent-z-soft px-2 font-mono text-xs text-ink-2">
+              <span className="inline-flex min-h-6 items-center gap-1.5 rounded-md bg-accent-z-soft px-2 py-1 font-mono text-xs whitespace-nowrap text-ink-2">
                 <FileCode2 size={14} strokeWidth={1.5} className="text-ink-3" />
                 schema inferred from <span className="text-link-z">{route.schemaRef}</span>
               </span>
@@ -482,7 +484,7 @@ const STATIC_PAGES: Record<string, StaticPage> = {
 function StaticDoc({ page }: { page: StaticPage }) {
   return (
     <div className="fade-scroll min-h-0 flex-1 overflow-y-auto">
-      <div className="max-w-[680px] px-10 pt-7 pb-16">
+      <div className="max-w-[680px] px-4 sm:px-7 lg:px-10 pt-7 pb-16">
         <h1 className="text-xl font-semibold text-ink">{page.title}</h1>
         <div className="mt-5 flex flex-col gap-4">
           {page.paragraphs.map((p, i) => (

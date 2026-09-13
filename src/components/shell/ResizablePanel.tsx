@@ -212,6 +212,8 @@ export function ResizeHandle({
         className={cn(
           "absolute grid size-6 place-content-center rounded-full border border-ds-gray-400 bg-ds-background-100 text-ink-2",
           "opacity-0 group-hover/handle:opacity-100 focus-visible:opacity-100 peer-focus-visible:opacity-100",
+          // Touch has no hover, so a hover-only toggle is simply missing there.
+          "[@media(pointer:coarse)]:opacity-100",
           "hover:border-ds-gray-500 hover:bg-ds-gray-100 hover:text-ink",
           horizontal ? "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" : "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2",
           // Generous invisible hit target around the small circle.
@@ -241,6 +243,8 @@ export function ResizablePanel({
   onCommit,
   onCollapsedChange,
   className,
+  overlay = false,
+  resizable = true,
   children,
 }: {
   side: PanelSide;
@@ -253,6 +257,10 @@ export function ResizablePanel({
   onCommit: (px: number) => void;
   onCollapsedChange: (collapsed: boolean) => void;
   className?: string;
+  /** Float over the content rather than taking layout width (narrow viewports). */
+  overlay?: boolean;
+  /** Edge-drag resizing. Off for overlays and touch, where it cannot be used. */
+  resizable?: boolean;
   children: ReactNode;
 }) {
   const { onPointerDown, onKeyDown } = useResizeHandle({
@@ -267,9 +275,17 @@ export function ResizablePanel({
   });
 
   const horizontal = side !== "bottom";
-  const style: CSSProperties = horizontal
-    ? { width: `var(${cssVar})` }
-    : { height: `var(${cssVar})` };
+
+  /* Overlay: a fixed-width sheet pinned to the edge that slides out of frame
+     when closed, so it never squeezes the main column. Inline: the panel owns
+     real layout width, driven by the CSS var the drag writes. */
+  const style: CSSProperties = overlay
+    ? horizontal
+      ? { width: Math.min(size, 320), maxWidth: "85vw" }
+      : { height: Math.min(size, 420), maxHeight: "70dvh" }
+    : horizontal
+      ? { width: `var(${cssVar})` }
+      : { height: `var(${cssVar})` };
 
   // A collapsed panel must not be reachable by keyboard. `inert` isn't in
   // React 18's prop types, so set it on the node directly.
@@ -284,13 +300,26 @@ export function ResizablePanel({
   return (
     <div
       data-collapsed={collapsed || undefined}
+      data-overlay={overlay || undefined}
       className={cn(
         "relative shrink-0",
+        overlay && [
+          "absolute inset-y-0 z-40 shadow-[var(--ds-shadow-modal)]",
+          side === "left" ? "left-0" : side === "right" ? "right-0" : "inset-x-0 bottom-0 inset-y-auto",
+          "[transition:transform_var(--dur-panel)_var(--ease-panel)]",
+          collapsed &&
+            (side === "left"
+              ? "-translate-x-full"
+              : side === "right"
+                ? "translate-x-full"
+                : "translate-y-full"),
+        ],
         // Geometry eases, except while dragging (the drag must be 1:1).
         // border-color is listed too: callers flip the edge hairline to
         // transparent when collapsed, and a bare width/height transition
         // would reset transition-property and snap that colour.
-        "[transition:width_var(--dur-panel)_var(--ease-panel),height_var(--dur-panel)_var(--ease-panel),border-color_var(--dur-panel)_var(--ease-panel)]",
+        !overlay &&
+          "[transition:width_var(--dur-panel)_var(--ease-panel),height_var(--dur-panel)_var(--ease-panel),border-color_var(--dur-panel)_var(--ease-panel)]",
         "[.panel-dragging_&]:transition-none",
         className,
       )}
@@ -301,14 +330,22 @@ export function ResizablePanel({
         ref={contentRef}
         className={cn(
           "h-full overflow-hidden",
-          collapsed && "pointer-events-none opacity-0",
-          "[transition:opacity_var(--dur-base)_var(--ease-out)]",
+          collapsed && !overlay && "pointer-events-none opacity-0",
+          collapsed && overlay && "pointer-events-none",
+          !overlay && "[transition:opacity_var(--dur-base)_var(--ease-out)]",
         )}
-        style={horizontal ? { width: collapsed ? size : "100%" } : { height: collapsed ? size : "100%" }}
+        style={
+          overlay
+            ? { width: "100%", height: "100%" }
+            : horizontal
+              ? { width: collapsed ? size : "100%" }
+              : { height: collapsed ? size : "100%" }
+        }
         aria-hidden={collapsed || undefined}
       >
         {children}
       </div>
+      {resizable ? (
       <ResizeHandle
         side={side}
         label={label}
@@ -320,6 +357,7 @@ export function ResizablePanel({
         min={min}
         max={max}
       />
+      ) : null}
     </div>
   );
 }
