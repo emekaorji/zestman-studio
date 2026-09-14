@@ -5,11 +5,11 @@ import type {
   Diagnostic,
   DocPage,
   DriftChange,
+  GitInfo,
   DynamicVar,
   Environment,
   EnvVar,
   Example,
-  ExecResult,
   Flow,
   HistoryDay,
   HistoryEntry,
@@ -19,6 +19,7 @@ import type {
   OAuthTokenRow,
   OperatorEvent,
   ProjectSummary,
+  RequestDraft,
   Route,
   RouteChecks,
   RunEvent,
@@ -29,14 +30,50 @@ import type {
   SpecCommit,
   VaultRef,
   WsEvent,
+  XrayLink,
 } from "./types";
+import type { ImportResult } from "./wire";
 
 export type Unsubscribe = () => void;
 
+export interface UploadedFile {
+  fileId: string;
+  fileName: string;
+  size: number;
+  contentType: string;
+}
+
+export interface GraphqlIntrospection {
+  status: number;
+  typeCount: number;
+  types: Array<{ name: string; kind: string; fields: string[] }>;
+  error?: string;
+}
+
+export interface OAuthTokenState {
+  active: boolean;
+  expiresInMin: number;
+  masked: string;
+}
+
+export type ConnectionState = "connecting" | "open" | "closed";
+
+/**
+ * Daemon push events. Everything except `connection` arrives as a
+ * `{ t: "event" }` frame on the shared socket; `connection` is the socket's
+ * own state, raised by the client.
+ */
 export interface DaemonEvents {
   "tap:entry": HistoryEntry;
   "watcher:change": { file: string; note: string };
   "mock:status": MockServerStatus;
+  /** No payload — refetch routes, source files and diagnostics. */
+  "routes:updated": undefined;
+  "diagnostics:updated": undefined;
+  "projects:changed": undefined;
+  "instance:online": { instanceId: string };
+  "instance:offline": { instanceId: string };
+  connection: { state: ConnectionState };
 }
 
 export interface SendHandle {
@@ -55,17 +92,32 @@ export interface WsSessionHandle {
   events: AsyncIterable<WsEvent>;
 }
 
+export interface DocPageContent {
+  id: string;
+  title: string;
+  kind: DocPage["kind"];
+  content: string;
+}
+
+export interface XrayResult {
+  confidence: string;
+  links: XrayLink[];
+  weakest: string;
+}
+
 /**
- * The seam between the studio UI and the (future) local daemon.
- * Today: FixtureClient. Later: HttpDaemonClient against local.zestman.xyz→daemon.
- * The UI's data slice is the ONLY consumer.
+ * The seam between the studio UI and the local daemon.
+ * Production: HttpDaemonClient. FixtureClient exists only for tests.
+ * The UI's state slices are the ONLY consumers.
  */
 export interface DaemonClient {
   listProjects(): Promise<ProjectSummary[]>;
 
   listRoutes(): Promise<Route[]>;
   listSourceFiles(): Promise<SourceFile[]>;
+  createRoute(partial: Partial<Route>): Promise<Route>;
   updateRoute(id: string, patch: Partial<Route>): Promise<Route>;
+  deleteRoute(id: string): Promise<void>;
 
   listEnvironments(): Promise<Environment[]>;
   saveEnvironments(envs: Environment[]): Promise<void>;
@@ -80,34 +132,58 @@ export interface DaemonClient {
 
   listHistoryDays(): Promise<HistoryDay[]>;
   listHistoryEntries(): Promise<HistoryEntry[]>;
+  clearHistory(): Promise<void>;
 
   listChecks(): Promise<RouteChecks[]>;
   getCheckDetail(routeId: string, type: string): Promise<CheckDetail>;
+  runChecks(routeIds?: string[]): Promise<RouteChecks[]>;
   listFlows(): Promise<Flow[]>;
+  saveFlow(f: Flow): Promise<Flow>;
+  deleteFlow(id: string): Promise<void>;
+  runFlow(id: string): Promise<Flow>;
   listSchedules(): Promise<Schedule[]>;
   saveSchedule(s: Schedule): Promise<Schedule>;
   deleteSchedule(id: string): Promise<void>;
+  runSchedule(id: string): Promise<Schedule>;
 
   listMocks(): Promise<Mock[]>;
   saveMock(m: Mock): Promise<Mock>;
+  deleteMock(id: string): Promise<void>;
   getMockServerStatus(): Promise<MockServerStatus>;
 
+  getOpenApi(): Promise<unknown>;
   getSpecCommits(): Promise<SpecCommit[]>;
   getDriftChanges(): Promise<DriftChange[]>;
+  getGitInfo(): Promise<GitInfo>;
+  regenerateSpec(): Promise<{ operations: number }>;
   getDiagnostics(): Promise<Diagnostic[]>;
   getInsights(): Promise<InsightsBundle>;
   listExamples(routeId?: string): Promise<Example[]>;
   saveExample(e: Example): Promise<Example>;
   deleteExample(id: string): Promise<void>;
   listDocPages(): Promise<DocPage[]>;
+  getDocPage(id: string): Promise<DocPageContent>;
+  saveDocPage(id: string, patch: { title?: string; content: string }): Promise<DocPage>;
 
   getSnippet(routeId: string, language: string): Promise<CodeSnippet>;
-  getXray(routeId: string): Promise<{ confidence: string; links: import("./types").XrayLink[]; weakest: string }>;
+  getXray(routeId: string): Promise<XrayResult>;
 
-  send(routeId: string, resolvedUrl: string): SendHandle;
-  runAll(iterations: number): RunHandle;
+  importPostman(text: string): Promise<ImportResult>;
+  importOpenApi(input: { text?: string; url?: string }): Promise<ImportResult>;
+  importCurl(text: string): Promise<Route>;
+  exportPostman(): Promise<unknown>;
+
+  openSource(file: string, line?: number): Promise<void>;
+  applyOperatorFix(cardId: string): Promise<{ ok: true; file: string }>;
+  /** Multipart upload into the daemon's tmp store; the id goes on a form-data row or the binary body. */
+  uploadFile(file: File): Promise<UploadedFile>;
+  introspectGraphql(url: string, headers?: Record<string, string>): Promise<GraphqlIntrospection>;
+  fetchOAuthToken(routeId: string, draft: RequestDraft): Promise<OAuthTokenState>;
+
+  send(routeId: string, draft: RequestDraft, resolvedUrl: string): SendHandle;
+  runAll(iterations: number, routeIds?: string[]): RunHandle;
   openWsSession(routeId: string): WsSessionHandle;
-  operatorRun(prompt: string): AsyncIterable<OperatorEvent>;
+  operatorRun(prompt: string, context?: { routeId?: string }): AsyncIterable<OperatorEvent>;
   startScan(): AsyncIterable<ScanEvent>;
 
   on<K extends keyof DaemonEvents>(event: K, handler: (payload: DaemonEvents[K]) => void): Unsubscribe;

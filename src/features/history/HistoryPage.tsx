@@ -1,5 +1,5 @@
 import { Braces, ChevronLeft, Info, ListChecks, Radio, RotateCcw, Workflow } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "@/state/store";
 import type { Example, HistoryEntry, Mock } from "@/daemon/types";
 import {
@@ -19,7 +19,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { CodeEditor } from "@/lib/codemirror/CodeEditor";
 import { clockTime, formatBytes, formatMs, statusText } from "@/lib/format";
-import { freezeFixtures } from "@/daemon/fixture/FixtureClient";
 import { id } from "@/lib/ids";
 import { cn } from "@/lib/utils";
 
@@ -28,8 +27,7 @@ const REVEAL = "opacity-0 focus-visible:opacity-100";
 
 const APP_START = Date.now();
 
-/* Canonical unmatched triage rows — the fixture live tap emits only matched
-   traffic, so the triage surface seeds the session's unmatched calls here. */
+/* Unmatched triage rows come straight off the live tap (entries without a routeId). */
 interface UnmatchedRow {
   id: string;
   at: number;
@@ -39,42 +37,70 @@ interface UnmatchedRow {
   kind: "mean" | "ignore" | "chip";
   note: string;
 }
-const UNMATCHED_SEED: UnmatchedRow[] = [
-  {
-    id: "um1",
-    at: APP_START - 50_000,
-    method: "GET",
-    path: "/api/v1/reprts/:id",
-    suggestion: "did you mean /api/v1/reports/:id?",
-    kind: "mean",
-    note: "seen 3× this session",
-  },
-  {
-    id: "um2",
-    at: APP_START - 82_000,
-    method: "GET",
-    path: "/favicon.ico",
-    suggestion: "ignore",
-    kind: "ignore",
-    note: "browser request",
-  },
-  {
-    id: "um3",
-    at: APP_START - 124_000,
-    method: "POST",
-    path: "/webhooks/stripe",
-    suggestion: "add as manualRoute",
-    kind: "chip",
-    note: "third-party webhook",
-  },
-];
 
-function prependHistory(entry: HistoryEntry) {
-  useStore.setState((s) => ({ historyEntries: [entry, ...s.historyEntries] }));
+/**
+ * Resend = open the route in the workbench and send its current draft. An
+ * entry with no matched route has nothing to resend against.
+ */
+function resendEntry(e: HistoryEntry): boolean {
+  if (!e.routeId) return false;
+  const s = useStore.getState();
+  s.navigate({ go: "route", routeId: e.routeId });
+  const after = useStore.getState();
+  const tab = after.openTabs.find((t) => t.routeId === e.routeId);
+  if (!tab) return false;
+  void after.send(tab.id);
+  return true;
 }
 
-function resendOf(e: HistoryEntry): HistoryEntry {
-  return { ...e, id: id("h"), at: Date.now() };
+/* data.ts re-subscribes tap:entry on every loadAll (StrictMode double-mount
+   duplicates the handler in dev) — dedupe by id for presentation. */
+function dedupeById(entries: HistoryEntry[]): HistoryEntry[] {
+  const seen = new Set<string>();
+  const out: HistoryEntry[] = [];
+  for (const e of entries) {
+    if (seen.has(e.id)) continue;
+    seen.add(e.id);
+    out.push(e);
+  }
+  return out;
+}
+
+/**
+ * The live list with a pause. The store keeps receiving tap entries; while
+ * paused they are held in a ref and the view keeps showing the frozen list.
+ * Resume flushes everything that arrived in between.
+ */
+function usePausableLive(): { entries: HistoryEntry[]; paused: boolean; togglePause: () => void; resume: () => void } {
+  const rawLive = useStore((s) => s.liveEntries);
+  const [paused, setPaused] = useState(false);
+  const [shown, setShown] = useState<HistoryEntry[]>(() => dedupeById(rawLive));
+  const held = useRef<HistoryEntry[] | null>(null);
+  const pausedRef = useRef(false);
+
+  useEffect(() => {
+    if (pausedRef.current) held.current = rawLive;
+    else setShown(dedupeById(rawLive));
+  }, [rawLive]);
+
+  const resume = () => {
+    pausedRef.current = false;
+    setPaused(false);
+    const flushed = held.current;
+    held.current = null;
+    if (flushed) setShown(dedupeById(flushed));
+  };
+
+  const togglePause = () => {
+    if (pausedRef.current) {
+      resume();
+      return;
+    }
+    pausedRef.current = true;
+    setPaused(true);
+  };
+
+  return { entries: shown, paused, togglePause, resume };
 }
 
 /* ── page frame ───────────────────────────────────────────────────────────
@@ -160,8 +186,9 @@ function RecordedList() {
   const total = historyDays.reduce((n, d) => n + d.count, 0);
 
   const resend = (e: HistoryEntry) => {
-    prependHistory(resendOf(e));
-    pushToast({ kind: "info", text: `Resent ${e.method} ${e.path}`, sub: `${e.status} · ${formatMs(e.ms)}` });
+    if (!resendEntry(e)) {
+      pushToast({ kind: "info", text: "No route to resend against", sub: `${e.method} ${e.path} matched nothing` });
+    }
   };
 
   const columns: Array<ColumnDef<HistoryEntry>> = [
@@ -289,12 +316,9 @@ function EntryDetail({ entry }: { entry: HistoryEntry }) {
   const dayLabel = day ?? historyDays[0]?.date ?? "Today";
 
   const resend = () => {
-    prependHistory(resendOf(entry));
-    pushToast({
-      kind: "info",
-      text: `Resent ${entry.method} ${entry.path}`,
-      sub: `${entry.status} · ${formatMs(entry.ms)}`,
-    });
+    if (!resendEntry(entry)) {
+      pushToast({ kind: "info", text: "No route to resend against", sub: `${entry.method} ${entry.path} matched nothing` });
+    }
   };
 
   return (
@@ -356,9 +380,13 @@ function PromoteDialog({
   onClose: () => void;
 }) {
   const routes = useStore((s) => s.routes);
+  const flows = useStore((s) => s.flows);
   const saveExample = useStore((s) => s.saveExample);
+  const saveFlow = useStore((s) => s.saveFlow);
+  const runChecks = useStore((s) => s.runChecks);
   const pushToast = useStore((s) => s.pushToast);
   const [target, setTarget] = useState<PromoteTarget>("examples");
+  const targetFlow = flows[0];
 
   const resources = [
     ...new Set(
@@ -371,12 +399,10 @@ function PromoteDialog({
 
   const willWrite: Array<{ line: string; tone: "add" | "touch" }> =
     target === "flow"
-      ? [{ line: "+ .zestman/flows/recorded-session.flow", tone: "add" }]
-      : resources.map((res) => ({
-          line: `+ .zestman/routes/${res}/${target === "examples" ? "examples" : "checks"}.json`,
-          tone: "add" as const,
-        }));
-  willWrite.push({ line: "~ .zestman/route-index.json", tone: "touch" });
+      ? [{ line: `~ ${targetFlow?.file ?? ".zestman/flows/"}`, tone: "touch" }]
+      : target === "examples"
+        ? resources.map((res) => ({ line: `+ .zestman/routes/${res}/examples.json`, tone: "add" as const }))
+        : [{ line: "~ .zestman/checks/ (re-run for the promoted routes)", tone: "touch" }];
 
   const promote = () => {
     const matched = entries.filter((e) => e.routeId);
@@ -396,21 +422,17 @@ function PromoteDialog({
         } satisfies Example);
       }
     } else if (target === "checks") {
-      // A promoted request proves the route responds with this status — flip those cells to pass.
-      const routeIds = new Set(matched.map((e) => e.routeId!));
-      useStore.setState((s) => ({
-        checks: s.checks.map((c) =>
-          routeIds.has(c.routeId) ? { ...c, cells: { ...c.cells, responds: "pass", status: "pass" } } : c,
-        ),
-      }));
+      // The daemon re-derives the checks for these routes with the recorded bodies as witnesses.
+      void runChecks([...new Set(matched.map((e) => e.routeId!))]).catch(() => undefined);
     } else if (target === "flow") {
-      useStore.setState((s) => ({
-        flows: s.flows.map((f, i) =>
-          i === 0
-            ? { ...f, steps: [...f.steps, ...matched.map((e) => ({ id: id("st"), routeId: e.routeId! }))] }
-            : f,
-        ),
-      }));
+      if (!targetFlow) {
+        pushToast({ kind: "info", text: "No flow to add to", sub: "create a flow under Tests first" });
+        return;
+      }
+      void saveFlow({
+        ...targetFlow,
+        steps: [...targetFlow.steps, ...matched.map((e) => ({ id: id("st"), routeId: e.routeId! }))],
+      }).catch(() => undefined);
     }
     pushToast({
       kind: "info",
@@ -489,30 +511,19 @@ function LiveHeaderActions({ paused, onPause, onEnd }: { paused: boolean; onPaus
   );
 }
 
-/* data.ts re-subscribes tap:entry on every loadAll (StrictMode double-mount
-   duplicates the handler in dev) — dedupe by id for presentation. */
-function dedupeById(entries: HistoryEntry[]): HistoryEntry[] {
-  const seen = new Set<string>();
-  const out: HistoryEntry[] = [];
-  for (const e of entries) {
-    if (seen.has(e.id)) continue;
-    seen.add(e.id);
-    out.push(e);
-  }
-  return out;
-}
-
 function LiveView() {
   const navigate = useStore((s) => s.navigate);
   const pushToast = useStore((s) => s.pushToast);
-  const rawLive = useStore((s) => s.liveEntries);
-  const liveEntries = dedupeById(rawLive);
+  const { entries: liveEntries, paused, togglePause, resume } = usePausableLive();
   const routes = useStore((s) => s.routes);
+  const flows = useStore((s) => s.flows);
   const historyDays = useStore((s) => s.historyDays);
+  const project = useStore((s) => s.projects.find((p) => p.id === s.activeProjectId));
+  const mockServer = useStore((s) => s.mockServer);
   const saveExample = useStore((s) => s.saveExample);
   const saveMock = useStore((s) => s.saveMock);
+  const saveFlow = useStore((s) => s.saveFlow);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
-  const [paused, setPaused] = useState(false);
   const [promoteOpen, setPromoteOpen] = useState(false);
 
   const total = historyDays.reduce((n, d) => n + d.count, 0) + liveEntries.length;
@@ -527,13 +538,8 @@ function LiveView() {
       return next;
     });
 
-  const togglePause = () => {
-    freezeFixtures(!paused);
-    setPaused(!paused);
-  };
-
   const endSession = () => {
-    freezeFixtures(false);
+    resume();
     navigate({ go: "history", mode: "recorded" });
   };
 
@@ -572,18 +578,24 @@ function LiveView() {
         recentHits: [],
       } satisfies Mock);
     }
-    pushToast({ kind: "info", text: `${matched.length} mocks seeded`, sub: "serving on :23501" });
+    pushToast({
+      kind: "info",
+      text: `${matched.length} mocks seeded`,
+      sub: mockServer?.running ? `serving on :${mockServer.port}` : "mock server stopped",
+    });
     setSelected(new Set());
   };
 
   const addToFlow = () => {
     const matched = selectedEntries.filter((e) => e.routeId);
-    useStore.setState((s) => ({
-      flows: s.flows.map((f, i) =>
-        i === 0 ? { ...f, steps: [...f.steps, ...matched.map((e) => ({ id: id("st"), routeId: e.routeId! }))] } : f,
-      ),
-    }));
-    pushToast({ kind: "info", text: `${matched.length} steps added to checkout` });
+    const flow = flows[0];
+    if (!flow) {
+      pushToast({ kind: "info", text: "No flow to add to", sub: "create a flow under Tests first" });
+      return;
+    }
+    void saveFlow({ ...flow, steps: [...flow.steps, ...matched.map((e) => ({ id: id("st"), routeId: e.routeId! }))] })
+      .then(() => pushToast({ kind: "info", text: `${matched.length} steps added to ${flow.name}` }))
+      .catch(() => undefined);
     setSelected(new Set());
   };
 
@@ -653,7 +665,7 @@ function LiveView() {
                 !paused && "animate-pulse",
               )}
             />
-            zestman run — pnpm dev · session {sessionAt}
+            {project?.online ? "app connected" : "waiting for the app"} · session {sessionAt}
           </span>
         }
         actions={<LiveHeaderActions paused={paused} onPause={togglePause} onEnd={endSession} />}
@@ -734,22 +746,39 @@ function LiveView() {
 
 function UnmatchedView() {
   const navigate = useStore((s) => s.navigate);
-  const liveEntries = dedupeById(useStore((s) => s.liveEntries));
+  const { entries: liveEntries, paused, togglePause, resume } = usePausableLive();
+  const createRoute = useStore((s) => s.createRoute);
   const pushToast = useStore((s) => s.pushToast);
-  const [paused, setPaused] = useState(false);
 
-  const streamed: UnmatchedRow[] = liveEntries
+  /* The daemon's suggestion decides the affordance: "did you mean …" is a
+     hint, "add as manualRoute" is an action, anything else is noise to ignore. */
+  const rows: UnmatchedRow[] = liveEntries
     .filter((e) => !e.routeId)
-    .map((e) => ({
-      id: e.id,
-      at: e.at,
-      method: e.method,
-      path: e.path,
-      suggestion: e.suggestion ?? "ignore",
-      kind: e.suggestion ? "mean" : "ignore",
-      note: e.caller ?? "this session",
-    }));
-  const rows = [...streamed, ...UNMATCHED_SEED];
+    .map((e) => {
+      const suggestion = e.suggestion ?? "ignore";
+      const kind: UnmatchedRow["kind"] = /manualRoute/i.test(suggestion)
+        ? "chip"
+        : /did you mean/i.test(suggestion)
+          ? "mean"
+          : "ignore";
+      return { id: e.id, at: e.at, method: e.method, path: e.path, suggestion, kind, note: e.caller ?? "this session" };
+    });
+
+  const addManualRoute = async (r: UnmatchedRow) => {
+    try {
+      const route = await createRoute({
+        method: r.method as never,
+        path: r.path,
+        name: `${r.method} ${r.path}`,
+        provenance: "manual",
+        protocol: "http",
+        tags: [],
+      });
+      pushToast({ kind: "info", text: "manualRoute added", sub: `${route.method} ${route.path}` });
+    } catch {
+      /* the daemon's message is already toasted by the client */
+    }
+  };
 
   const columns: Array<ColumnDef<UnmatchedRow>> = [
     { id: "time", header: "Time", width: 96, cell: (r) => timeCell(r.at) },
@@ -762,13 +791,7 @@ function UnmatchedView() {
       cell: (r) => {
         if (r.kind === "chip")
           return (
-            <GhostButton
-              size="sm"
-              onClick={() =>
-                pushToast({ kind: "info", text: "manualRoute added", sub: "zestman.config.ts → manualRoutes" })
-              }
-              className="font-mono text-xs"
-            >
+            <GhostButton size="sm" onClick={() => void addManualRoute(r)} className="font-mono text-xs">
               {r.suggestion}
             </GhostButton>
           );
@@ -787,12 +810,9 @@ function UnmatchedView() {
       actions={
         <LiveHeaderActions
           paused={paused}
-          onPause={() => {
-            freezeFixtures(!paused);
-            setPaused(!paused);
-          }}
+          onPause={togglePause}
           onEnd={() => {
-            freezeFixtures(false);
+            resume();
             navigate({ go: "history", mode: "recorded" });
           }}
         />
@@ -811,12 +831,11 @@ function UnmatchedView() {
         </span>
       }
     >
-      <DataTable
-        columns={columns}
-        rows={rows}
-        rowKey={(r) => r.id}
-        rowHeight={32}
-      />
+      {rows.length === 0 ? (
+        <EmptyState className="h-64" title="No unmatched traffic" sub="every request this session hit a discovered route" />
+      ) : (
+        <DataTable columns={columns} rows={rows} rowKey={(r) => r.id} rowHeight={32} />
+      )}
     </PageFrame>
   );
 }

@@ -1,7 +1,7 @@
 import { useStore } from "@/state/store";
 import type { NavCommand } from "@/state/types";
 import { getClient } from "./client";
-import { freezeFixtures } from "@/daemon/fixture/FixtureClient";
+import { getConnection } from "./connection";
 
 declare global {
   interface Window {
@@ -9,7 +9,7 @@ declare global {
       nav: (cmd: NavCommand) => void;
       state: () => unknown;
       client: () => unknown;
-      fx: { freeze: () => void; thaw: () => void };
+      conn: () => unknown;
     };
   }
 }
@@ -20,9 +20,6 @@ export function installDevHandle() {
     nav: (cmd) => useStore.getState().navigate(cmd),
     state: () => useStore.getState(),
     client: () => getClient(),
-    fx: {
-      freeze: () => freezeFixtures(true),
-      thaw: () => freezeFixtures(false),
-    },
+    conn: () => getConnection(),
   };
 }

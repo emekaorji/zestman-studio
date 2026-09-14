@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronLeft, Copy, Plus } from "lucide-react";
+import { ChevronDown, ChevronLeft, Copy, Plus, Trash2 } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { AccentButton, Dot, GhostButton, MethodBadge, StatusChip } from "@/components/primitives";
 import { DataTable, type ColumnDef } from "@/components/table/DataTable";
@@ -56,10 +56,14 @@ function MocksHome() {
 
   const routeById = new Map(routes.map((r) => [r.id, r]));
   const enabled = mocks.filter((m) => m.enabled).length;
-  const running = mockServer?.running !== false;
-  const url = mockServer?.url ?? "http://localhost:23501";
+  const running = mockServer?.running === true;
+  const url = mockServer?.url ?? null;
 
   const copyBaseUrl = () => {
+    if (!url) {
+      pushToast({ kind: "info", text: "Mock server is not running", sub: "no base URL to copy" });
+      return;
+    }
     void navigator.clipboard?.writeText(url);
     pushToast({ kind: "info", text: "Base URL copied", sub: url });
   };
@@ -154,7 +158,7 @@ function MocksHome() {
           {running ? "Running" : "Stopped"}
         </span>
         <div className="ml-auto flex shrink-0 items-center gap-2">
-          <GhostButton onClick={copyBaseUrl}>
+          <GhostButton onClick={copyBaseUrl} disabled={!url}>
             <Copy size={16} strokeWidth={1.5} />
             Copy base URL
           </GhostButton>
@@ -166,9 +170,9 @@ function MocksHome() {
       </div>
 
       <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="font-mono text-sm text-link-z">{url}</span>
+        <span className="font-mono text-sm text-link-z">{url ?? "not listening"}</span>
         <span className="text-xs text-ink-3">
-          · {mocks.length} mocks · {enabled} enabled · port auto-assigned (studio + 1)
+          · {mocks.length} mocks · {enabled} enabled{mockServer ? ` · port ${mockServer.port}` : ""}
         </span>
       </div>
 
@@ -197,7 +201,24 @@ function MockEditor({ mock }: { mock: Mock }) {
   const route = useStore((s) => s.routes.find((r) => r.id === mock.routeId));
   const navigate = useStore((s) => s.navigate);
   const saveMock = useStore((s) => s.saveMock);
+  const deleteMock = useStore((s) => s.deleteMock);
   const pushDialog = useStore((s) => s.pushDialog);
+  const pushToast = useStore((s) => s.pushToast);
+
+  const confirmDelete = () => {
+    pushDialog({
+      kind: "confirm",
+      title: "Delete mock",
+      body: `"${mock.name}" stops being served and its recent hits are dropped.`,
+      confirmLabel: "Delete",
+      onConfirm: () => {
+        void deleteMock(mock.id)
+          .then(() => pushToast({ kind: "info", text: `Mock "${mock.name}" deleted` }))
+          .catch(() => undefined);
+        navigate({ go: "mock" });
+      },
+    });
+  };
 
   const statusId = useId();
   const delayId = useId();
@@ -316,16 +337,22 @@ function MockEditor({ mock }: { mock: Mock }) {
         <span className="min-w-0 truncate font-mono text-sm text-ink-2 max-sm:order-last max-sm:basis-full">
           {route?.path}
         </span>
-        <div className="ml-auto flex shrink-0 items-center gap-2">
-          <Label htmlFor={`${statusId}-enabled`} className="text-base font-normal text-ink-2">
-            Enabled
-          </Label>
-          <Switch
-            id={`${statusId}-enabled`}
-            checked={mock.enabled}
-            onCheckedChange={(v) => void saveMock({ ...mock, enabled: v })}
-            className="transition-colors duration-[var(--dur-base)] ease-[var(--ease-in-out)]"
-          />
+        <div className="ml-auto flex shrink-0 items-center gap-3">
+          <span className="flex items-center gap-2">
+            <Label htmlFor={`${statusId}-enabled`} className="text-base font-normal text-ink-2">
+              Enabled
+            </Label>
+            <Switch
+              id={`${statusId}-enabled`}
+              checked={mock.enabled}
+              onCheckedChange={(v) => void saveMock({ ...mock, enabled: v })}
+              className="transition-colors duration-[var(--dur-base)] ease-[var(--ease-in-out)]"
+            />
+          </span>
+          <GhostButton tone="danger" size="sm" onClick={confirmDelete}>
+            <Trash2 size={16} strokeWidth={1.5} />
+            Delete
+          </GhostButton>
         </div>
       </div>
 

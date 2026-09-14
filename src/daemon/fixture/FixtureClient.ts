@@ -1,15 +1,19 @@
 import type {
   DaemonClient,
   DaemonEvents,
+  DocPageContent,
   RunHandle,
   SendHandle,
   Unsubscribe,
   WsSessionHandle,
 } from "../client";
 import type {
+  GitInfo,
   CheckDetail,
   CodeSnippet,
+  DocPage,
   ExecResult,
+  Flow,
   HistoryEntry,
   OperatorEvent,
   Route,
@@ -20,6 +24,7 @@ import type {
   WsEvent,
   XrayLink,
 } from "../types";
+import type { ImportResult } from "../wire";
 import { routes as case1Routes, sourceFiles as case1Files, CANON } from "@/fixtures/case1/routes";
 import * as fx from "@/fixtures/case1/data";
 import { clockTime } from "@/lib/format";
@@ -118,6 +123,12 @@ export class FixtureClient implements DaemonClient {
     "tap:entry": new Set(),
     "watcher:change": new Set(),
     "mock:status": new Set(),
+    "routes:updated": new Set(),
+    "diagnostics:updated": new Set(),
+    "projects:changed": new Set(),
+    "instance:online": new Set(),
+    "instance:offline": new Set(),
+    connection: new Set(),
   };
   private timers: ReturnType<typeof setInterval | typeof setTimeout>[] = [];
   private tapSeq = 0;
@@ -133,6 +144,8 @@ export class FixtureClient implements DaemonClient {
     examples: structuredClone(fx.examples),
     history: structuredClone(fx.historyToday),
     oauthTokens: structuredClone(fx.oauthTokens),
+    docPages: structuredClone(fx.docPages),
+    docContent: {} as Record<string, string>,
   };
 
   constructor(private projectId: string) {}
@@ -217,6 +230,22 @@ export class FixtureClient implements DaemonClient {
     if (i >= 0) this.db.routes[i] = { ...this.db.routes[i], ...patch, updatedAt: Date.now() };
     return structuredClone(this.db.routes[i]);
   }
+  async createRoute(partial: Partial<Route>) {
+    const route: Route = {
+      ...structuredClone(CANON.createUser),
+      ...partial,
+      id: partial.id ?? id("rt"),
+      provenance: partial.provenance ?? "manual",
+      sourceLocations: partial.sourceLocations ?? [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    this.db.routes.push(route);
+    return structuredClone(route);
+  }
+  async deleteRoute(routeId: string) {
+    this.db.routes = this.db.routes.filter((r) => r.id !== routeId);
+  }
 
   async listEnvironments() {
     await sleep(40);
@@ -260,6 +289,9 @@ export class FixtureClient implements DaemonClient {
   async listHistoryEntries() {
     return structuredClone(this.db.history);
   }
+  async clearHistory() {
+    this.db.history = [];
+  }
 
   async listChecks() {
     await sleep(60);
@@ -279,8 +311,37 @@ export class FixtureClient implements DaemonClient {
       received: "received: 500",
     };
   }
+  async runChecks(routeIds?: string[]) {
+    await sleep(120);
+    const all = structuredClone(fx.routeChecks);
+    return routeIds ? all.filter((c) => routeIds.includes(c.routeId)) : all;
+  }
   async listFlows() {
     return structuredClone(this.db.flows);
+  }
+  async saveFlow(f: Flow) {
+    const i = this.db.flows.findIndex((x) => x.id === f.id);
+    if (i >= 0) this.db.flows[i] = structuredClone(f);
+    else this.db.flows.push(structuredClone(f));
+    return structuredClone(f);
+  }
+  async deleteFlow(flowId: string) {
+    this.db.flows = this.db.flows.filter((x) => x.id !== flowId);
+  }
+  async runFlow(flowId: string) {
+    await sleep(300);
+    const i = this.db.flows.findIndex((x) => x.id === flowId);
+    if (i < 0) throw new Error(`flow ${flowId} not found`);
+    const flow = this.db.flows[i];
+    const steps = flow.steps.map((st) => {
+      const route = this.db.routes.find((r) => r.id === st.routeId);
+      const canned = route ? cannedFor(route) : { status: 200, ms: 30, body: "" };
+      const fail = canned.status >= 500;
+      return { ...st, runState: fail ? ("fail" as const) : ("pass" as const), ms: canned.ms, failNote: fail ? canned.body : undefined };
+    });
+    const passed = steps.filter((st) => st.runState === "pass").length;
+    this.db.flows[i] = { ...flow, steps, lastRun: { at: Date.now(), passed, total: steps.length } };
+    return structuredClone(this.db.flows[i]);
   }
   async listSchedules() {
     return structuredClone(this.db.schedules);
@@ -294,6 +355,18 @@ export class FixtureClient implements DaemonClient {
   async deleteSchedule(id: string) {
     this.db.schedules = this.db.schedules.filter((x) => x.id !== id);
   }
+  async runSchedule(scheduleId: string) {
+    const i = this.db.schedules.findIndex((x) => x.id === scheduleId);
+    if (i < 0) throw new Error(`schedule ${scheduleId} not found`);
+    const sch = this.db.schedules[i];
+    const at = Date.now();
+    this.db.schedules[i] = {
+      ...sch,
+      lastRun: { at, code: "passed" },
+      results: [{ at, result: "passed" as const, ms: 240 }, ...sch.results].slice(0, 10),
+    };
+    return structuredClone(this.db.schedules[i]);
+  }
 
   async listMocks() {
     return structuredClone(this.db.mocks);
@@ -304,16 +377,34 @@ export class FixtureClient implements DaemonClient {
     else this.db.mocks.push(structuredClone(m));
     return structuredClone(m);
   }
+  async deleteMock(mockId: string) {
+    this.db.mocks = this.db.mocks.filter((x) => x.id !== mockId);
+  }
   async getMockServerStatus() {
     const enabled = this.db.mocks.filter((m) => m.enabled).length;
     return { ...fx.mockServerStatus, total: this.db.mocks.length, enabled };
   }
 
+  async getOpenApi(): Promise<unknown> {
+    const paths: Record<string, Record<string, unknown>> = {};
+    for (const r of this.db.routes.filter((x) => x.protocol === "http")) {
+      const key = r.path.replace(/:([A-Za-z0-9_]+)/g, "{$1}");
+      paths[key] = { ...(paths[key] ?? {}), [r.method.toLowerCase()]: { summary: r.name, tags: r.tags } };
+    }
+    return { openapi: "3.0.3", info: { title: this.projectId, version: "1.0.0" }, paths };
+  }
+  async regenerateSpec() {
+    await sleep(200);
+    return { operations: this.db.routes.filter((x) => x.protocol === "http").length };
+  }
   async getSpecCommits() {
     return structuredClone(fx.specCommits);
   }
   async getDriftChanges() {
     return structuredClone(fx.driftChanges);
+  }
+  async getGitInfo(): Promise<GitInfo> {
+    return { isRepo: true, branch: "main", head: "a1b2c3d", specDirty: false };
   }
   async getDiagnostics() {
     return structuredClone(fx.diagnostics);
@@ -333,7 +424,51 @@ export class FixtureClient implements DaemonClient {
     this.db.examples = this.db.examples.filter((x) => x.id !== id);
   }
   async listDocPages() {
-    return structuredClone(fx.docPages);
+    return structuredClone(this.db.docPages);
+  }
+  async getDocPage(pageId: string): Promise<DocPageContent> {
+    const page = this.db.docPages.find((p) => p.id === pageId);
+    if (!page) throw new Error(`doc page ${pageId} not found`);
+    return { ...page, content: this.db.docContent[pageId] ?? "" };
+  }
+  async saveDocPage(pageId: string, patch: { title?: string; content: string }): Promise<DocPage> {
+    const i = this.db.docPages.findIndex((p) => p.id === pageId);
+    if (i < 0) throw new Error(`doc page ${pageId} not found`);
+    if (patch.title) this.db.docPages[i] = { ...this.db.docPages[i], title: patch.title };
+    this.db.docContent[pageId] = patch.content;
+    return structuredClone(this.db.docPages[i]);
+  }
+
+  /* import / export / source */
+  async importPostman(): Promise<ImportResult> {
+    return { routes: 0, warnings: ["fixture client does not parse collections"] };
+  }
+  async importOpenApi(): Promise<ImportResult> {
+    return { routes: 0, warnings: ["fixture client does not parse specs"] };
+  }
+  async importCurl(text: string): Promise<Route> {
+    const method = /-X\s+([A-Z]+)/.exec(text)?.[1] ?? "GET";
+    const url = /https?:\/\/[^\s'"]+/.exec(text)?.[0] ?? "http://localhost:3000/";
+    const path = new URL(url).pathname;
+    return this.createRoute({ method: method as Route["method"], path, name: `${method} ${path}`, provenance: "manual" });
+  }
+  async exportPostman(): Promise<unknown> {
+    return { collection: { info: { name: this.projectId }, item: [] }, environments: structuredClone(this.db.environments) };
+  }
+  async openSource() {
+    /* nothing to open in a fixture */
+  }
+  async applyOperatorFix(cardId: string): Promise<{ ok: true; file: string }> {
+    return { ok: true, file: `.zestman/operator/${cardId}.json` };
+  }
+  async uploadFile(file: File) {
+    return { fileId: `fx_${file.name}`, fileName: file.name, size: file.size, contentType: file.type || "application/octet-stream" };
+  }
+  async introspectGraphql() {
+    return { status: 200, typeCount: 42, types: [] };
+  }
+  async fetchOAuthToken() {
+    return { active: true, expiresInMin: 52, masked: "••••9f2" };
   }
 
   async getSnippet(routeId: string, language: string): Promise<CodeSnippet> {
@@ -387,7 +522,7 @@ export class FixtureClient implements DaemonClient {
   }
 
   /* execution */
-  send(routeId: string): SendHandle {
+  send(routeId: string, _draft?: unknown, _resolvedUrl?: string): SendHandle {
     const route = this.db.routes.find((r) => r.id === routeId) ?? CANON.createUser;
     let cancelled = false;
     const db = this.db;
@@ -423,8 +558,8 @@ export class FixtureClient implements DaemonClient {
     return { events: gen(), cancel: () => (cancelled = true) };
   }
 
-  runAll(iterations: number): RunHandle {
-    const httpRoutes = this.db.routes.filter((r) => r.protocol === "http");
+  runAll(iterations: number, routeIds?: string[]): RunHandle {
+    const httpRoutes = this.db.routes.filter((r) => r.protocol === "http" && (!routeIds || routeIds.includes(r.id)));
     let cancelled = false;
     async function* gen(): AsyncGenerator<RunEvent> {
       let ok = 0;
@@ -499,7 +634,7 @@ export class FixtureClient implements DaemonClient {
     };
   }
 
-  async *operatorRun(prompt: string): AsyncGenerator<OperatorEvent> {
+  async *operatorRun(prompt: string, _context?: { routeId?: string }): AsyncGenerator<OperatorEvent> {
     yield { t: "thinking", on: true };
     await sleep(700);
     yield { t: "thinking", on: false };
@@ -517,6 +652,7 @@ export class FixtureClient implements DaemonClient {
         { line: '+ "total": 1200', tone: "add" },
         { line: "- (missing)", tone: "del" },
       ],
+      cardId: "fx_card_1",
     };
     yield { t: "done" };
   }

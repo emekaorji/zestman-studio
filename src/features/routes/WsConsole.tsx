@@ -130,7 +130,7 @@ export function WsConsole({ tab, route }: { tab: OpenTab; route: Route }) {
           <Button
             type="button"
             size="lg"
-            onClick={() => void wsConnect()}
+            onClick={() => void wsConnect(route.id)}
             className="shrink-0 rounded-lg px-3.5 text-base font-medium transition-colors duration-[var(--dur-base)] ease-[var(--ease-in-out)]"
             style={{ height: URL_ROW_H }}
           >

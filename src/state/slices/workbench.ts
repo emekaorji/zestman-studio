@@ -1,25 +1,13 @@
 import type { StateCreator } from "zustand";
 import type { StudioStore } from "../store";
 import type { RequestTabId, ResponseTabId } from "../types";
-import type { ExecResult, KVRow, RequestBody, Route, RouteAuth, RouteScripts, RouteSettings } from "@/daemon/types";
+import type { ExecResult, RequestDraft, Route } from "@/daemon/types";
 import { getClient } from "@/app/client";
 import { id } from "@/lib/ids";
 import { buildVarMap, resolveText } from "@/lib/variables";
 
-export interface RequestDraft {
-  method: string;
-  url: string; // "{{baseUrl}}/api/v1/users"
-  params: KVRow[];
-  query: KVRow[];
-  headers: KVRow[];
-  body: RequestBody;
-  auth: RouteAuth;
-  scripts: RouteScripts;
-  settings: RouteSettings;
-  name: string;
-  description: string;
-  tags: string[];
-}
+/** The tab's draft is the canonical `RequestDraft` the daemon receives on send. */
+export type { RequestDraft };
 
 export interface OpenTab {
   id: string;
@@ -69,6 +57,25 @@ function draftFromRoute(route: Route): RequestDraft {
     name: route.name,
     description: route.description,
     tags: [...route.tags],
+  };
+}
+
+/** An ExecResult for a request that never produced a response. */
+function failedResult(errorMessage: string): ExecResult {
+  return {
+    status: 0,
+    statusLabel: "ERR",
+    headers: [],
+    cookies: [],
+    body: "",
+    bodyKind: "text",
+    ms: 0,
+    bytes: 0,
+    at: Date.now(),
+    timeline: [],
+    tests: [],
+    consoleLines: [],
+    errorMessage,
   };
 }
 
@@ -161,7 +168,7 @@ export const createWorkbenchSlice: StateCreator<StudioStore, [], [], WorkbenchSl
     const active = s.environments.find((e) => e.isActive);
     const vars = buildVarMap(s.globals, active?.variables);
     const { resolved } = resolveText(tab.draft.url, vars);
-    const handle = getClient().send(tab.routeId, resolved);
+    const handle = getClient().send(tab.routeId, tab.draft, resolved);
     sendCancels.set(tabId, handle.cancel);
     try {
       for await (const ev of handle.events) {
@@ -172,12 +179,23 @@ export const createWorkbenchSlice: StateCreator<StudioStore, [], [], WorkbenchSl
             ),
           }));
           // refresh history mirror
-          const entries = await getClient().listHistoryEntries();
-          set({ historyEntries: entries });
+          await get().refreshHistory();
         }
       }
+    } catch (e) {
+      // The stream failed (socket dropped, daemon error) — show it as a network error.
+      const message = e instanceof Error ? e.message : String(e);
+      set((st) => ({
+        openTabs: st.openTabs.map((t) =>
+          t.id === tabId ? { ...t, sending: false, response: failedResult(message), responseTab: "response" } : t,
+        ),
+      }));
     } finally {
       sendCancels.delete(tabId);
+      // A cancel that never produced a frame must still release the tab.
+      set((st) => ({
+        openTabs: st.openTabs.map((t) => (t.id === tabId && t.sending ? { ...t, sending: false } : t)),
+      }));
     }
   },
 

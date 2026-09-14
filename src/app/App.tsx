@@ -23,6 +23,7 @@ import { EnvironmentSidebar } from "@/features/environment/EnvironmentSidebar";
 import { DialogHost } from "@/features/dialogs/DialogHost";
 import { CommandPalette } from "@/features/dialogs/CommandPalette";
 import { ToastHost } from "@/features/dialogs/ToastHost";
+import { ConnectScreen } from "@/features/connect/ConnectScreen";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 const PAGES: Record<SectionId, ComponentType> = {
@@ -68,19 +69,37 @@ function SectionSidebar(): ReactNode {
 }
 
 export function App() {
-  const loadAll = useStore((s) => s.loadAll);
+  const boot = useStore((s) => s.boot);
+  const applyLaunchLink = useStore((s) => s.applyLaunchLink);
+  const connState = useStore((s) => s.connState);
   const loaded = useStore((s) => s.loaded);
   useGlobalKeyboard();
 
   useEffect(() => {
-    void loadAll();
-  }, [loadAll]);
+    void boot();
+    // A launch link opened on an already-loaded studio only changes the hash —
+    // no reload — so it has to be consumed here too.
+    const onHash = () => {
+      if (/(^|[#&])c=/.test(window.location.hash)) void applyLaunchLink(window.location.hash);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, [boot, applyLaunchLink]);
+
+  if (connState !== "connected") {
+    return (
+      <div className="relative h-full">
+        <ConnectScreen />
+        <ToastHost />
+      </div>
+    );
+  }
 
   if (!loaded) {
     return (
       <div className="flex h-full items-center justify-center bg-canvas">
         <span className="animate-in fade-in-0 text-base text-ink-3 duration-500">
-          Zestman — reading your codebase…
+          Zestman — connecting…
         </span>
       </div>
     );

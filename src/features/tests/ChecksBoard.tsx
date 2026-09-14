@@ -1,10 +1,12 @@
-import { Lock, Play, Plus, Settings2, X } from "lucide-react";
-import { useMemo } from "react";
+import { Loader2, Lock, Play, Plus, Settings2, X } from "lucide-react";
+import { useMemo, useState } from "react";
 import { GhostButton, MethodBadge, Pill } from "@/components/primitives";
 import { DataTable, type ColumnDef, type RowGroup } from "@/components/table/DataTable";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { CheckCell, CheckType, Route } from "@/daemon/types";
+import { SourceRef } from "@/components/SourceRef";
+import { relTime } from "@/lib/format";
 import { RAIL_W, ROW_DATA, ROW_MD, SIDEBAR_HEAD_H } from "@/lib/metrics";
 import { cn } from "@/lib/utils";
 import { useStore } from "@/state/store";
@@ -18,7 +20,6 @@ const CHECK_TYPES: Array<{ type: CheckType; label: string }> = [
   { type: "bad400", label: "Bad 400" },
 ];
 
-const BOARD_MODULES = ["users", "orders", "app"];
 
 const CELL_WORD: Record<CheckCell, string> = {
   pass: "passing",
@@ -93,13 +94,37 @@ export function ChecksBoard() {
   const checks = useStore((s) => s.checks);
   const tests = useStore((s) => s.sections.tests);
   const navigate = useStore((s) => s.navigate);
+  const runChecks = useStore((s) => s.runChecks);
   const pushToast = useStore((s) => s.pushToast);
+  const [running, setRunning] = useState(false);
+  const [lastRunAt, setLastRunAt] = useState<number | null>(null);
+
+  const runAll = async () => {
+    if (running) return;
+    setRunning(true);
+    try {
+      const result = await runChecks();
+      const cells = result.flatMap((r) => Object.values(r.cells));
+      setLastRunAt(Date.now());
+      pushToast({
+        kind: "info",
+        text: `${cells.length} checks ran`,
+        sub: `${cells.filter((c) => c === "pass").length} passing · ${cells.filter((c) => c === "fail").length} failing`,
+      });
+    } catch {
+      /* the daemon's message is already toasted by the client */
+    } finally {
+      setRunning(false);
+    }
+  };
 
   const groups = useMemo<Array<RowGroup<BoardRow>>>(() => {
     const cellsById = new Map(checks.map((c) => [c.routeId, c.cells]));
-    return BOARD_MODULES.map((module) => {
+    // One group per module, in discovery order; untagged routes group under "app".
+    const modules = [...new Set(routes.filter((r) => r.protocol === "http").map((r) => r.tags[0] ?? "app"))];
+    return modules.map((module) => {
       const rows = routes
-        .filter((r) => r.protocol === "http" && r.tags[0] === module)
+        .filter((r) => r.protocol === "http" && (r.tags[0] ?? "app") === module)
         .flatMap((route) => {
           const cells = cellsById.get(route.id);
           return cells ? [{ route, cells }] : [];
@@ -162,19 +187,15 @@ export function ChecksBoard() {
       <div className="fade-scroll flex min-h-0 flex-1 flex-col overflow-y-auto px-4 sm:px-7 pt-6 pb-8">
         <PageHead
           title="Checks"
-          sub="derived from your code — updated on every rescan"
+          sub="derived from what your app reports — run them any time"
           actions={
             <>
-              <GhostButton
-                onClick={() =>
-                  pushToast({
-                    kind: "info",
-                    text: `${totals.total} checks ran`,
-                    sub: `${totals.pass} passing · ${totals.fail} failing · ${totals.inferred + totals.na} n/a`,
-                  })
-                }
-              >
-                <Play size={16} strokeWidth={1.5} />
+              <GhostButton onClick={() => void runAll()} disabled={running} aria-busy={running}>
+                {running ? (
+                  <Loader2 size={16} strokeWidth={1.5} className="animate-spin" />
+                ) : (
+                  <Play size={16} strokeWidth={1.5} />
+                )}
                 Run all checks
               </GhostButton>
               <GhostButton onClick={() => navigate({ go: "ci-setup" })}>
@@ -208,7 +229,7 @@ export function ChecksBoard() {
         <span className="text-ds-gray-600">·</span>
         <span className="text-ink-3 tabular-nums">{totals.na} n/a</span>
         <span className="text-ds-gray-600">·</span>
-        <span className="text-ink-3">last run 2 m ago</span>
+        <span className="text-ink-3">{lastRunAt ? `last run ${relTime(lastRunAt)}` : "derived from the last scan"}</span>
       </div>
 
       {tests.checkId && !tests.checkRun ? <CheckEditorPanel routeId={tests.checkId} /> : null}
@@ -228,10 +249,10 @@ function CheckEditorPanel({ routeId }: { routeId: string }) {
 
   const handler = route.sourceLocations.find((l) => l.role === "handler");
   const authed = route.middleware.includes("requireAuth");
-  const inherited: Array<{ name: string; ref: string; muted?: boolean }> = [
-    { name: "responds", ref: handler?.file ?? "—" },
+  const inherited: Array<{ name: string; ref: string; muted?: boolean; file?: boolean }> = [
+    { name: "responds", ref: handler?.file ?? "—", file: handler != null },
     { name: `status ${route.method === "POST" ? 201 : 200}`, ref: "from examples" },
-    { name: "schema", ref: route.schemaRef ?? "no schema", muted: !route.schemaRef },
+    { name: "schema", ref: route.schemaRef ?? "no schema", muted: !route.schemaRef, file: route.schemaRef != null },
     { name: "auth 401", ref: authed ? "from requireAuth" : "n/a", muted: !authed },
     { name: "invalid 400", ref: route.schemaRef ? "from schema" : "n/a", muted: !route.schemaRef },
   ];
@@ -279,14 +300,18 @@ function CheckEditorPanel({ routeId }: { routeId: string }) {
             >
               <Lock size={14} strokeWidth={1.5} className="shrink-0 text-ds-gray-600" />
               <span className="text-base text-ink">{row.name}</span>
-              <span
-                className={cn(
-                  "ml-auto truncate font-mono text-sm",
-                  row.muted ? "text-ink-3" : "text-link-z",
-                )}
-              >
-                {row.ref}
-              </span>
+              {row.file ? (
+                <SourceRef fileRef={row.ref} className="ml-auto" />
+              ) : (
+                <span
+                  className={cn(
+                    "ml-auto truncate font-mono text-sm",
+                    row.muted ? "text-ink-3" : "text-link-z",
+                  )}
+                >
+                  {row.ref}
+                </span>
+              )}
             </li>
           ))}
         </ul>

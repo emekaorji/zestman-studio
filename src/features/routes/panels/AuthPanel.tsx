@@ -1,6 +1,7 @@
 import type { AuthMode, RouteAuth } from "@/daemon/types";
 import type { OpenTab } from "@/state/slices/workbench";
 import { useStore } from "@/state/store";
+import { getClient } from "@/app/client";
 import { CapsHeader, Dot, GhostButton, Pill } from "@/components/primitives";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -186,9 +187,14 @@ export function AuthPanel({ tab }: { tab: OpenTab }) {
 
           <div className="flex flex-wrap items-center gap-3">
             <GhostButton
-              onClick={() => {
-                patchOauth({ tokenState: { active: true, expiresInMin: 60 } });
-                pushToast({ kind: "info", text: "Access token refreshed", sub: "auth.example.dev · expires in 60 m" });
+              onClick={async () => {
+                try {
+                  const t = await getClient().fetchOAuthToken(tab.routeId, tab.draft);
+                  patchOauth({ tokenState: { active: t.active, expiresInMin: t.expiresInMin } });
+                  pushToast({ kind: "info", text: "Access token fetched", sub: `${t.masked} · expires in ${t.expiresInMin} m` });
+                } catch {
+                  /* the client already toasted the daemon's message */
+                }
               }}
             >
               Get new access token

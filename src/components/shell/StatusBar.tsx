@@ -16,6 +16,8 @@ export function StatusBar() {
   const files = useStore((s) => s.files);
   const diagnostics = useStore((s) => s.diagnostics);
   const navigate = useStore((s) => s.navigate);
+  const wsState = useStore((s) => s.wsState);
+  const wsEverOpen = useStore((s) => s.wsEverOpen);
 
   const project = projects.find((p) => p.id === activeProjectId);
   const env = environments.find((e) => e.isActive);
@@ -23,6 +25,7 @@ export function StatusBar() {
   const warnCount = diagnostics.filter((d) => d.level !== "info").length;
   const httpCount = routes.filter((r) => r.protocol === "http").length;
   const fileCount = project?.fileCount ?? files.length;
+  const live = wsState === "open";
 
   return (
     <TooltipProvider delayDuration={250}>
@@ -61,10 +64,17 @@ export function StatusBar() {
         </div>
 
         <div className="flex shrink-0 items-center gap-3">
-          <span className="flex items-center gap-1.5">
-            <Dot tone="ok" />
-            <span className="max-sm:sr-only">watching</span>
-          </span>
+          {live ? (
+            <span className="flex items-center gap-1.5">
+              <Dot tone="ok" />
+              <span className="max-sm:sr-only">watching</span>
+            </span>
+          ) : (
+            <span role="status" className="flex items-center gap-1.5 text-warn">
+              <Dot tone="warn" />
+              <span>{wsEverOpen ? "reconnecting…" : "connecting…"}</span>
+            </span>
+          )}
           <span className="font-mono">
             {httpCount} routes<span className="max-md:hidden"> · {fileCount} files · 0.1.0</span>
           </span>

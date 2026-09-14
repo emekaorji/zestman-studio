@@ -149,7 +149,7 @@ export function TopNav() {
           </DropdownMenu>
 
           <Badge variant="secondary" className="hidden shrink-0 font-normal text-ink-2 lg:inline-flex">
-            {project?.framework ?? "express"}
+            {project?.framework ?? "—"}
           </Badge>
         </div>
 

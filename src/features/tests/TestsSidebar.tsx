@@ -27,6 +27,11 @@ export function TestsSidebar() {
       </IslandRow>
 
       <div className="caps-label flex h-8 items-center px-5 pt-3">Flows</div>
+      {flows.length === 0 ? (
+        <IslandRow active={tests.tab === "flows"} onClick={() => navigate({ go: "tests", tab: "flows" })}>
+          <span className="truncate text-ink-3">None yet</span>
+        </IslandRow>
+      ) : null}
       {flows.map((f) => (
         <IslandRow
           key={f.id}

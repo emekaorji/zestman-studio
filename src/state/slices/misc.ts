@@ -14,7 +14,12 @@ export interface RunnerSlice {
   runnerIterations: number;
   runnerDataFile: string | null;
   runnerSummary: { ok: number; failed: number; testsPass: number; testsFail: number; totalMs: number } | null;
-  startRun: () => Promise<void>;
+  /** When the last run finished — the overview's "last run-all". */
+  runnerFinishedAt: number | null;
+  /** Route ids the next "selection" run covers (set by the page that owns the selection). */
+  runnerScope: string[] | null;
+  startRun: (routeIds?: string[]) => Promise<void>;
+  setRunnerScope: (routeIds: string[] | null) => void;
   stopRun: () => void;
   setRunnerIterations: (n: number) => void;
   resetRunner: () => void;
@@ -26,29 +31,38 @@ export const createRunnerSlice: StateCreator<StudioStore, [], [], RunnerSlice> =
   runnerRunning: false,
   runnerItems: [],
   runnerIterations: loadUi().runnerIterations,
-  runnerDataFile: "users.csv",
+  runnerDataFile: null,
   runnerSummary: null,
+  runnerFinishedAt: null,
+  runnerScope: null,
+  setRunnerScope: (routeIds) => set({ runnerScope: routeIds }),
 
-  startRun: async () => {
+  startRun: async (routeIds) => {
     if (get().runnerRunning) return;
     set({ runnerRunning: true, runnerItems: [], runnerSummary: null });
-    const handle = getClient().runAll(get().runnerIterations);
+    const handle = getClient().runAll(get().runnerIterations, routeIds);
     runCancel = handle.cancel;
-    for await (const ev of handle.events as AsyncIterable<RunEvent>) {
-      if (ev.t === "item") {
-        set((s) => {
-          const key = (i: RunItem) => `${i.routeId}:${i.iteration}`;
-          const items = [...s.runnerItems];
-          const idx = items.findIndex((i) => key(i) === key(ev.item));
-          if (idx >= 0) items[idx] = ev.item;
-          else items.push(ev.item);
-          return { runnerItems: items };
-        });
-      } else {
-        set({ runnerSummary: ev.summary, runnerRunning: false });
+    try {
+      for await (const ev of handle.events as AsyncIterable<RunEvent>) {
+        if (ev.t === "item") {
+          set((s) => {
+            const key = (i: RunItem) => `${i.routeId}:${i.iteration}`;
+            const items = [...s.runnerItems];
+            const idx = items.findIndex((i) => key(i) === key(ev.item));
+            if (idx >= 0) items[idx] = ev.item;
+            else items.push(ev.item);
+            return { runnerItems: items };
+          });
+        } else {
+          set({ runnerSummary: ev.summary, runnerRunning: false, runnerFinishedAt: Date.now() });
+        }
       }
+    } catch (e) {
+      get().pushToast({ kind: "info", text: "Run stopped", sub: e instanceof Error ? e.message : String(e) });
+    } finally {
+      runCancel = null;
+      set({ runnerRunning: false });
     }
-    set({ runnerRunning: false });
   },
 
   stopRun: () => {
@@ -68,8 +82,12 @@ export interface OperatorCard {
   body?: string;
   pill?: string;
   diff?: Array<{ line: string; tone: "add" | "del" | "ctx" }>;
+  /** Daemon-side id; only cards that carry one can be applied. */
+  cardId?: string;
   /** Set once the user rules on a proposed fix. Undecided cards show buttons. */
   decision?: "accepted" | "rejected";
+  /** Where the daemon wrote the accepted fix. */
+  appliedFile?: string;
 }
 
 export interface RailSlice {
@@ -82,8 +100,8 @@ export interface RailSlice {
   setRailCodeLang: (l: string) => void;
   setRailResolveVars: (v: boolean) => void;
   askOperator: (prompt: string) => Promise<void>;
-  /** Accept or reject a proposed fix. The daemon will apply it for real. */
-  decideOperatorCard: (cardId: string, decision: "accepted" | "rejected") => void;
+  /** Accept (the daemon applies the fix) or reject (nothing is written). */
+  decideOperatorCard: (cardId: string, decision: "accepted" | "rejected") => Promise<void>;
   clearOperatorFeed: () => void;
 }
 
@@ -98,32 +116,65 @@ export const createRailSlice: StateCreator<StudioStore, [], [], RailSlice> = (se
   setRailCodeLang: (l) => set({ railCodeLang: l }),
   setRailResolveVars: (v) => set({ railResolveVars: v }),
 
-  decideOperatorCard: (cardId, decision) => {
-    const card = get().operatorFeed.find((c) => c.id === cardId);
+  decideOperatorCard: async (feedId, decision) => {
+    const card = get().operatorFeed.find((c) => c.id === feedId);
+    if (!card) return;
+    if (decision === "rejected") {
+      set((s) => ({
+        operatorFeed: s.operatorFeed.map((c) => (c.id === feedId ? { ...c, decision } : c)),
+      }));
+      return;
+    }
+    if (!card.cardId) {
+      get().pushToast({ kind: "info", text: "This card cannot be applied", sub: "the daemon did not attach a fix id" });
+      return;
+    }
+    // A failed apply is toasted by the client; the card stays undecided so it can be retried.
+    const result = await getClient().applyOperatorFix(card.cardId);
     set((s) => ({
-      operatorFeed: s.operatorFeed.map((c) => (c.id === cardId ? { ...c, decision } : c)),
+      operatorFeed: s.operatorFeed.map((c) =>
+        c.id === feedId ? { ...c, decision: "accepted", appliedFile: result.file } : c,
+      ),
     }));
-    get().pushToast(
-      decision === "accepted"
-        ? { kind: "operator", text: "Fix applied", sub: card?.body ?? "written to .zestman/" }
-        : { kind: "info", text: "Fix rejected", sub: "nothing was written" },
-    );
+    get().pushToast({ kind: "operator", text: "Fix applied", sub: result.file });
   },
 
   clearOperatorFeed: () => set({ operatorFeed: [] }),
 
   askOperator: async (prompt) => {
     set({ railMode: "act" });
-    for await (const ev of getClient().operatorRun(prompt) as AsyncIterable<OperatorEvent>) {
-      if (ev.t === "thinking") set({ operatorThinking: ev.on });
-      else if (ev.t === "card") {
-        set((s) => ({
-          operatorFeed: [
-            ...s.operatorFeed,
-            { id: id("op"), kind: ev.kind, title: ev.title, body: ev.body, pill: ev.pill, diff: ev.diff },
-          ],
-        }));
+    const s = get();
+    const routeId = s.openTabs.find((t) => t.id === s.activeTabId)?.routeId;
+    const stream = getClient().operatorRun(prompt, routeId ? { routeId } : undefined) as AsyncIterable<OperatorEvent>;
+    try {
+      for await (const ev of stream) {
+        if (ev.t === "thinking") set({ operatorThinking: ev.on });
+        else if (ev.t === "card") {
+          set((st) => ({
+            operatorFeed: [
+              ...st.operatorFeed,
+              {
+                id: id("op"),
+                kind: ev.kind,
+                title: ev.title,
+                body: ev.body,
+                pill: ev.pill,
+                diff: ev.diff,
+                cardId: ev.cardId,
+              },
+            ],
+          }));
+        }
       }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      // Keep the failure in the feed, not only in a toast that fades: the fix is usually a config step.
+      set((st) => ({
+        operatorFeed: [...st.operatorFeed, { id: id("op"), kind: "note", title: "OPERATOR STOPPED", body: message }],
+      }));
+      get().pushToast({ kind: "info", text: "Operator stopped", sub: message });
+    } finally {
+      set({ operatorThinking: false });
     }
   },
 });
@@ -142,7 +193,7 @@ export interface WsSlice {
   wsConnected: boolean;
   wsMessages: WsMessage[];
   wsStartedAt: number | null;
-  wsConnect: () => Promise<void>;
+  wsConnect: (routeId?: string) => Promise<void>;
   wsDisconnect: () => void;
   wsSend: (text: string) => void;
 }
@@ -154,30 +205,47 @@ export const createWsSlice: StateCreator<StudioStore, [], [], WsSlice> = (set, g
   wsMessages: [],
   wsStartedAt: null,
 
-  wsConnect: async () => {
+  wsConnect: async (routeId) => {
     if (get().wsConnected) return;
-    const route = get().routes.find((r) => r.protocol === "websocket");
+    const s = get();
+    const route =
+      s.routes.find((r) => r.id === routeId && r.protocol === "websocket") ??
+      s.routes.find((r) => r.id === s.openTabs.find((t) => t.id === s.activeTabId)?.routeId && r.protocol === "websocket") ??
+      s.routes.find((r) => r.protocol === "websocket");
     if (!route) return;
-    wsSession = getClient().openWsSession(route.id);
+    const session = getClient().openWsSession(route.id);
+    wsSession = session;
     set({ wsConnected: true, wsStartedAt: Date.now(), wsMessages: [] });
-    for await (const ev of wsSession.events as AsyncIterable<WsEvent>) {
-      if (ev.t === "status") {
-        set({ wsConnected: ev.connected });
-        if (!ev.connected) break;
-      } else if (ev.t === "system") {
-        set((s) => ({ wsMessages: [...s.wsMessages, { id: id("ws"), kind: "system", text: ev.text, at: ev.at }] }));
-      } else if (ev.t === "sent") {
-        set((s) => ({ wsMessages: [...s.wsMessages, { id: id("ws"), kind: "sent", text: ev.text, at: ev.at }] }));
-      } else if (ev.t === "recv") {
-        set((s) => ({
-          wsMessages: [
-            ...s.wsMessages,
-            ev.binary
-              ? { id: id("ws"), kind: "binary", text: `binary frame · ${(ev.binary.bytes / 1024).toFixed(1)} KB`, at: ev.at }
-              : { id: id("ws"), kind: "recv", text: ev.text, at: ev.at },
-          ],
-        }));
+    try {
+      for await (const ev of session.events as AsyncIterable<WsEvent>) {
+        if (ev.t === "status") {
+          set({ wsConnected: ev.connected });
+          if (!ev.connected) break;
+        } else if (ev.t === "system") {
+          set((st) => ({ wsMessages: [...st.wsMessages, { id: id("ws"), kind: "system", text: ev.text, at: ev.at }] }));
+        } else if (ev.t === "sent") {
+          set((st) => ({ wsMessages: [...st.wsMessages, { id: id("ws"), kind: "sent", text: ev.text, at: ev.at }] }));
+        } else if (ev.t === "recv") {
+          set((st) => ({
+            wsMessages: [
+              ...st.wsMessages,
+              ev.binary
+                ? { id: id("ws"), kind: "binary", text: `binary frame · ${(ev.binary.bytes / 1024).toFixed(1)} KB`, at: ev.at }
+                : { id: id("ws"), kind: "recv", text: ev.text, at: ev.at },
+            ],
+          }));
+        }
       }
+    } catch (e) {
+      set((st) => ({
+        wsMessages: [
+          ...st.wsMessages,
+          { id: id("ws"), kind: "system", text: e instanceof Error ? e.message : String(e), at: Date.now() },
+        ],
+      }));
+    } finally {
+      if (wsSession === session) wsSession = null;
+      set({ wsConnected: false });
     }
   },
 

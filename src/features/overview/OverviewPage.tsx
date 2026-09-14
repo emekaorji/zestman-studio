@@ -4,7 +4,7 @@ import { useStore } from "@/state/store";
 import type { HistoryEntry, Route } from "@/daemon/types";
 import { Dot, GhostButton, MethodBadge, StatusChip } from "@/components/primitives";
 import { Button } from "@/components/ui/button";
-import { clockTime, formatMs, statusText } from "@/lib/format";
+import { clockTime, formatMs, relTime, statusText } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /* ── stat strip ───────────────────────────────────────────────────────────── */
@@ -89,7 +89,9 @@ function NavRow({
 
 export function OverviewPage() {
   const navigate = useStore((s) => s.navigate);
+  const pushDialog = useStore((s) => s.pushDialog);
   const routes = useStore((s) => s.routes);
+  const files = useStore((s) => s.files);
   const projects = useStore((s) => s.projects);
   const activeProjectId = useStore((s) => s.activeProjectId);
   const diagnostics = useStore((s) => s.diagnostics);
@@ -97,15 +99,23 @@ export function OverviewPage() {
   const historyEntries = useStore((s) => s.historyEntries);
   const mockServer = useStore((s) => s.mockServer);
   const mocks = useStore((s) => s.mocks);
+  const driftChanges = useStore((s) => s.driftChanges);
+  const runnerSummary = useStore((s) => s.runnerSummary);
+  const runnerFinishedAt = useStore((s) => s.runnerFinishedAt);
 
   const project = projects.find((p) => p.id === activeProjectId);
-  const fileCount = project?.fileCount ?? 35;
+  const fileCount = project?.fileCount ?? files.length;
   const diagCount = diagnostics.filter((d) => d.level !== "info").length;
-  const monitors = schedules.filter((s) => s.enabled).length;
+  const enabledSchedules = schedules.filter((s) => s.enabled);
+  const monitors = enabledSchedules.length;
+  const monitorsPassing = enabledSchedules.filter((s) => s.lastRun?.code === "passed").length;
+  const httpCount = routes.filter((r) => r.protocol === "http").length;
 
   const certain = routes.filter((r) => r.confidence >= 0.9).length;
   const inferred = routes.filter((r) => r.confidence < 0.9 && r.confidence >= 0.4).length;
   const guessed = routes.length - certain - inferred;
+  const resolvedPct = routes.length > 0 ? Math.round((certain / routes.length) * 100) : 0;
+  const runTotal = runnerSummary ? runnerSummary.ok + runnerSummary.failed : 0;
 
   const activity = historyEntries.slice(0, 5);
 
@@ -124,9 +134,16 @@ export function OverviewPage() {
         {/* stat strip */}
         <div className="flex flex-wrap items-stretch gap-y-5">
           <Stat value={String(project?.routeCount ?? routes.length)} label={`routes · ${fileCount} source files`} />
-          <Stat value="100%" label={`discovered · ${diagCount} diagnostics`} />
-          <Stat value="27/27" label="last run-all · 2 m ago" ok />
-          <Stat value={String(monitors)} label="monitors · both passing" />
+          <Stat value={`${resolvedPct}%`} label={`certain · ${diagCount} diagnostics`} />
+          <Stat
+            value={runnerSummary ? `${runnerSummary.ok}/${runTotal}` : "—"}
+            label={runnerFinishedAt ? `last run-all · ${relTime(runnerFinishedAt)}` : "no run-all yet"}
+            ok={runnerSummary != null && runnerSummary.failed === 0}
+          />
+          <Stat
+            value={String(monitors)}
+            label={monitors > 0 ? `monitors · ${monitorsPassing} passing` : "monitors · none scheduled"}
+          />
         </div>
 
         {/* activity */}
@@ -204,12 +221,14 @@ export function OverviewPage() {
           <section>
             <SectionHead>Spec</SectionHead>
             <div className="flex h-12 items-center gap-2">
-              <span className="truncate text-base text-ink">14 paths · 2 m ago</span>
+              <span className="truncate text-base text-ink">
+                {httpCount} operations · {driftChanges.length} drift
+              </span>
               <span className="ml-auto flex shrink-0 items-center gap-2">
                 <GhostButton size="sm" onClick={() => navigate({ go: "specs", tab: "document" })}>
                   View
                 </GhostButton>
-                <GhostButton size="sm" onClick={() => navigate({ go: "specs", tab: "document" })}>
+                <GhostButton size="sm" onClick={() => pushDialog({ kind: "export" })}>
                   Export
                 </GhostButton>
               </span>
@@ -223,12 +242,14 @@ export function OverviewPage() {
               Discovery
             </SectionHead>
             <div className="flex h-12 items-center gap-2">
-              <Dot tone="ok" />
-              <span className="truncate text-base text-ink">express · static + runtime</span>
+              <Dot tone={project?.online ? "ok" : "muted"} />
+              <span className="truncate text-base text-ink">
+                {project?.framework ?? "—"} · {project?.online ? "live" : "last known"}
+              </span>
             </div>
             <div className="flex flex-col gap-0.5 text-base text-ink-3">
               <span className="tabular-nums">
-                {certain} certain · {inferred} inferred · {guessed} guessed
+                {certain} certain · {inferred} inferred · {guessed} unverified
               </span>
               <span className="tabular-nums">{diagCount} diagnostics</span>
             </div>

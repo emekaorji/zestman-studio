@@ -15,7 +15,7 @@ import { ShortcutsDialog } from "./ShortcutsDialog";
 function renderDialog(d: DialogInstance) {
   switch (d.kind) {
     case "runner":
-      return <RunnerDialog />;
+      return <RunnerDialog scope={d.scope} />;
     case "import":
       return <ImportDialog initialTab={d.tab} />;
     case "export":

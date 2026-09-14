@@ -5,9 +5,32 @@ import { DialogFrame } from "@/components/dialogs/DialogFrame";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useStore } from "@/state/store";
+import { downloadText } from "@/lib/download";
 import { formatMs } from "@/lib/format";
 import { ROW_DATA } from "@/lib/metrics";
 import type { Route, RunItem } from "@/daemon/types";
+
+const xmlEscape = (v: string) =>
+  v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+/** JUnit XML for a finished run — one testcase per route × iteration. */
+function junitXml(items: RunItem[], routeById: Map<string, Route>, totalMs: number): string {
+  const done = items.filter((i) => i.status === "pass" || i.status === "fail");
+  const failures = done.filter((i) => i.status === "fail").length;
+  const cases = done
+    .map((i) => {
+      const route = routeById.get(i.routeId);
+      const name = xmlEscape(`${route?.method ?? ""} ${route?.path ?? i.routeId} · it ${i.iteration}`);
+      const time = ((i.ms ?? 0) / 1000).toFixed(3);
+      const failure =
+        i.status === "fail"
+          ? `\n      <failure message="${xmlEscape(i.note ?? `status ${i.code ?? "?"}`)}"/>`
+          : "";
+      return `    <testcase classname="zestman" name="${name}" time="${time}">${failure}\n    </testcase>`;
+    })
+    .join("\n");
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<testsuites>\n  <testsuite name="zestman run-all" tests="${done.length}" failures="${failures}" time="${(totalMs / 1000).toFixed(3)}">\n${cases}\n  </testsuite>\n</testsuites>\n`;
+}
 
 /** One request in the live feed / results digest — Vercel's dense h32 data row. */
 function ItemRow({
@@ -47,8 +70,9 @@ function digest(items: RunItem[]): RunItem[] {
   return picks;
 }
 
-export function RunnerDialog() {
+export function RunnerDialog({ scope = "all" }: { scope?: "all" | "selection" }) {
   const running = useStore((s) => s.runnerRunning);
+  const runnerScope = useStore((s) => s.runnerScope);
   const items = useStore((s) => s.runnerItems);
   const iterations = useStore((s) => s.runnerIterations);
   const dataFile = useStore((s) => s.runnerDataFile);
@@ -59,15 +83,21 @@ export function RunnerDialog() {
   const popDialog = useStore((s) => s.popDialog);
   const pushToast = useStore((s) => s.pushToast);
   const envName = useStore((s) => s.environments.find((e) => e.isActive)?.name ?? "Local");
-  const [withData, setWithData] = useState(true);
+  const [withData, setWithData] = useState(dataFile != null);
+
+  const scopeIds = scope === "selection" && runnerScope && runnerScope.length > 0 ? runnerScope : null;
 
   useEffect(() => {
     const s = useStore.getState();
-    if (!s.runnerRunning && !s.runnerSummary) void s.startRun();
+    if (!s.runnerRunning && !s.runnerSummary) void s.startRun(scopeIds ?? undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const routeById = useMemo(() => new Map(routes.map((r) => [r.id, r])), [routes]);
-  const httpCount = useMemo(() => routes.filter((r) => r.protocol === "http").length, [routes]);
+  const httpCount = useMemo(
+    () => (scopeIds ? scopeIds.length : routes.filter((r) => r.protocol === "http").length),
+    [routes, scopeIds],
+  );
   const total = httpCount * iterations;
   const completed = items.filter((i) => i.status === "pass" || i.status === "fail");
   const pct = total > 0 ? Math.round((completed.length / total) * 100) : 0;
@@ -78,13 +108,20 @@ export function RunnerDialog() {
   if (done) {
     footer = (
       <>
-        <GhostButton onClick={() => pushToast({ kind: "info", text: "Exported junit-results.xml" })}>
+        <GhostButton
+          onClick={() => {
+            downloadText("junit-results.xml", junitXml(items, routeById, summary?.totalMs ?? 0), "application/xml");
+            pushToast({ kind: "info", text: "Exported junit-results.xml" });
+          }}
+        >
           Export JUnit
         </GhostButton>
         <GhostButton
+          disabled={(summary?.failed ?? 0) === 0}
           onClick={() => {
+            const failed = [...new Set(items.filter((i) => i.status === "fail").map((i) => i.routeId))];
             resetRunner();
-            void useStore.getState().startRun();
+            void useStore.getState().startRun(failed.length > 0 ? failed : undefined);
           }}
         >
           Re-run failures
@@ -183,14 +220,16 @@ export function RunnerDialog() {
                 </Button>
               </span>
             ) : null}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setWithData(true)}
-              className="px-1.5 text-xs font-normal text-ink-3 transition-colors duration-[var(--dur-base)] ease-[var(--ease-in-out)] hover:text-ink-2"
-            >
-              + data file
-            </Button>
+            {dataFile && !withData ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setWithData(true)}
+                className="px-1.5 text-xs font-normal text-ink-3 transition-colors duration-[var(--dur-base)] ease-[var(--ease-in-out)] hover:text-ink-2"
+              >
+                + data file
+              </Button>
+            ) : null}
           </div>
 
           <div className="mt-4 flex items-baseline justify-between">

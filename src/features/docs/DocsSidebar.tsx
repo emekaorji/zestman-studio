@@ -7,8 +7,10 @@ import { MethodBadge } from "@/components/primitives";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 
-const MODULE_ORDER = ["users", "posts", "categories", "products", "orders", "app"] as const;
-const DEFAULT_EXPANDED = new Set<string>(["users", "orders"]);
+/** Modules in discovery order; routes without a tag fall under "app" (shown as Other). */
+function modulesOf(routes: Route[]): string[] {
+  return [...new Set(routes.map((r) => r.tags[0] ?? "app"))];
+}
 
 const moduleLabel = (mod: string) => (mod === "app" ? "Other" : mod);
 export const shortDocPath = (path: string) => path.replace(/^\/api\/v1/, "") || "/";
@@ -82,10 +84,11 @@ export function DocsSidebar() {
   const routes = useStore((s) => s.routes);
   const selectedDocId = useStore((s) => s.sections.docs.selectedDocId);
   const navigate = useStore((s) => s.navigate);
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(DEFAULT_EXPANDED));
-
   const pages = docPages.filter((p) => p.kind === "page");
   const httpRoutes = routes.filter((r) => r.protocol === "http");
+  const modules = modulesOf(httpRoutes);
+  // First visit: the first two modules open so the tree reads as a tree, not a wall.
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(modules.slice(0, 2)));
 
   const toggle = (mod: string) =>
     setExpanded((cur) => {
@@ -115,8 +118,8 @@ export function DocsSidebar() {
       </div>
 
       <div className="flex flex-col gap-0.5 pb-4">
-        {MODULE_ORDER.map((mod) => {
-          const modRoutes = httpRoutes.filter((r) => r.tags[0] === mod);
+        {modules.map((mod) => {
+          const modRoutes = httpRoutes.filter((r) => (r.tags[0] ?? "app") === mod);
           if (modRoutes.length === 0) return null;
           return (
             <EndpointGroup

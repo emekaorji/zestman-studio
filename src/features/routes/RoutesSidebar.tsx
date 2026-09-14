@@ -15,13 +15,43 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 
-const DEFAULT_EXPANDED = ["f_users.controller.ts", "f_orders.controller.ts", "f_app.ts"];
+
+/** Routes the studio owns; code-discovered ones are removed in source. */
+const OWNED_PROVENANCE = new Set<Route["provenance"]>(["manual", "spec"]);
 
 /** One route row, with its right-click menu. */
 function RouteLeaf({ route, active }: { route: Route; active: boolean }) {
   const navigate = useStore((s) => s.navigate);
   const requestTitleEdit = useStore((s) => s.requestTitleEdit);
+  const createRoute = useStore((s) => s.createRoute);
+  const deleteRoute = useStore((s) => s.deleteRoute);
+  const pushDialog = useStore((s) => s.pushDialog);
   const pushToast = useStore((s) => s.pushToast);
+  const owned = OWNED_PROVENANCE.has(route.provenance);
+
+  const duplicate = async () => {
+    const { id: _id, createdAt: _c, updatedAt: _u, sourceLocations: _s, ...rest } = route;
+    try {
+      const copy = await createRoute({ ...rest, name: `${route.name} copy`, provenance: "manual" });
+      navigate({ go: "route", routeId: copy.id });
+    } catch {
+      /* the daemon's message is already toasted by the client */
+    }
+  };
+
+  const confirmDelete = () => {
+    pushDialog({
+      kind: "confirm",
+      title: "Delete route",
+      body: `${route.method} ${route.path} is removed from the project. Open tabs close.`,
+      confirmLabel: "Delete",
+      onConfirm: () => {
+        void deleteRoute(route.id)
+          .then(() => pushToast({ kind: "info", text: `Deleted ${route.method} ${route.path}` }))
+          .catch(() => undefined);
+      },
+    });
+  };
 
   return (
     <ContextMenu>
@@ -44,16 +74,7 @@ function RouteLeaf({ route, active }: { route: Route; active: boolean }) {
         <ContextMenuItem className="text-base" onSelect={() => navigate({ go: "route", routeId: route.id })}>
           Open
         </ContextMenuItem>
-        <ContextMenuItem
-          className="text-base"
-          onSelect={() =>
-            pushToast({
-              kind: "info",
-              text: "Duplicate needs the local daemon",
-              sub: "route files are owned by your source tree",
-            })
-          }
-        >
+        <ContextMenuItem className="text-base" onSelect={() => void duplicate()}>
           Duplicate
         </ContextMenuItem>
         <ContextMenuItem
@@ -66,12 +87,18 @@ function RouteLeaf({ route, active }: { route: Route; active: boolean }) {
           Rename
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem disabled className="flex-col items-start gap-0.5 text-base">
-          Delete
-          <span className="text-xs leading-snug text-ink-3">
-            defined in code — remove the route in source
-          </span>
-        </ContextMenuItem>
+        {owned ? (
+          <ContextMenuItem className="text-base text-err" onSelect={confirmDelete}>
+            Delete
+          </ContextMenuItem>
+        ) : (
+          <ContextMenuItem disabled className="flex-col items-start gap-0.5 text-base">
+            Delete
+            <span className="text-xs leading-snug text-ink-3">
+              defined in code — remove the route in source
+            </span>
+          </ContextMenuItem>
+        )}
       </ContextMenuContent>
     </ContextMenu>
   );
@@ -135,9 +162,10 @@ export function RoutesSidebar() {
   const navigate = useStore((s) => s.navigate);
 
   const activeProjectId = useStore((st) => st.activeProjectId);
+  // First visit: the first three files open, the rest fold — the tree stays scannable.
   const [expanded, setExpanded] = usePersistentState<Set<string>>(
     `zestman:ws:${activeProjectId}:tree:v1`,
-    new Set(DEFAULT_EXPANDED),
+    new Set(files.slice(0, 3).map((f) => f.id)),
     setCodec,
   );
 

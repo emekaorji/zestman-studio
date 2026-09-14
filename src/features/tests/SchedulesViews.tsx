@@ -114,7 +114,22 @@ export function SchedulesList() {
   const schedules = useStore((s) => s.schedules);
   const navigate = useStore((s) => s.navigate);
   const saveSchedule = useStore((s) => s.saveSchedule);
+  const runSchedule = useStore((s) => s.runSchedule);
   const pushToast = useStore((s) => s.pushToast);
+
+  const runNow = async (s: Schedule) => {
+    try {
+      const ran = await runSchedule(s.id);
+      const last = ran.results[0];
+      pushToast({
+        kind: "info",
+        text: `Ran "${ran.name}"`,
+        sub: last ? (last.result === "passed" ? "passed" : `result ${last.result}`) : ran.scope,
+      });
+    } catch {
+      /* the daemon's message is already toasted by the client */
+    }
+  };
 
   const recent = useMemo<RunRow[]>(() => {
     const rows = schedules.flatMap((sch) =>
@@ -197,7 +212,7 @@ export function SchedulesList() {
               aria-label={`Run ${s.name} now`}
               onClick={(e) => {
                 e.stopPropagation();
-                pushToast({ kind: "info", text: `Running "${s.name}" now`, sub: s.scope });
+                void runNow(s);
               }}
               className="text-ink-2 transition-colors duration-[var(--dur-base)] ease-[var(--ease-in-out)] hover:text-ink"
             >
@@ -317,8 +332,10 @@ export function ScheduleDetail({ scheduleId }: { scheduleId: string }) {
   const schedule = useStore((s) => s.schedules.find((x) => x.id === scheduleId));
   const navigate = useStore((s) => s.navigate);
   const saveSchedule = useStore((s) => s.saveSchedule);
+  const runSchedule = useStore((s) => s.runSchedule);
   const pushDialog = useStore((s) => s.pushDialog);
   const pushToast = useStore((s) => s.pushToast);
+  const [running, setRunning] = useState(false);
 
   const resultRows = useMemo<ResultRow[]>(
     () =>
@@ -341,11 +358,31 @@ export function ScheduleDetail({ scheduleId }: { scheduleId: string }) {
       body: `"${schedule.name}" and its run history will be removed.`,
       confirmLabel: "Delete",
       onConfirm: () => {
-        void useStore.getState().deleteSchedule(schedule.id);
+        void useStore
+          .getState()
+          .deleteSchedule(schedule.id)
+          .then(() => pushToast({ kind: "info", text: `Schedule "${schedule.name}" deleted` }));
         navigate({ go: "tests", tab: "schedules" });
-        pushToast({ kind: "info", text: `Schedule "${schedule.name}" deleted` });
       },
     });
+  };
+
+  const runNow = async () => {
+    if (running) return;
+    setRunning(true);
+    try {
+      const ran = await runSchedule(schedule.id);
+      const last = ran.results[0];
+      pushToast({
+        kind: "info",
+        text: `Ran "${ran.name}"`,
+        sub: last ? (last.result === "passed" ? "passed" : `result ${last.result}`) : ran.scope,
+      });
+    } catch {
+      /* the daemon's message is already toasted by the client */
+    } finally {
+      setRunning(false);
+    }
   };
 
   const resultColumns: Array<ColumnDef<ResultRow>> = [
@@ -401,15 +438,7 @@ export function ScheduleDetail({ scheduleId }: { scheduleId: string }) {
         title={schedule.name}
         actions={
           <>
-            <GhostButton
-              onClick={() =>
-                pushToast({
-                  kind: "info",
-                  text: `Running "${schedule.name}" now`,
-                  sub: schedule.scope,
-                })
-              }
-            >
+            <GhostButton onClick={() => void runNow()} disabled={running} aria-busy={running}>
               <Play size={16} strokeWidth={1.5} />
               Run now
             </GhostButton>
@@ -505,9 +534,10 @@ export function NewScheduleForm() {
       lastRun: null,
       nextRunLabel: nextRunShort(cron),
       results: [],
-    });
+    })
+      .then(() => pushToast({ kind: "info", text: `Schedule "${trimmed}" created`, sub: nextRunShort(cron) }))
+      .catch(() => undefined);
     navigate({ go: "tests", tab: "schedules" });
-    pushToast({ kind: "info", text: `Schedule "${trimmed}" created`, sub: nextRunShort(cron) });
   };
 
   return (

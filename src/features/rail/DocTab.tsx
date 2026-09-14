@@ -1,5 +1,7 @@
 import { useStore } from "@/state/store";
+import { useBaseUrl } from "@/hooks/useBaseUrl";
 import { CapsHeader, EmptyState, Pill } from "@/components/primitives";
+import { SourceRef } from "@/components/SourceRef";
 import { Button } from "@/components/ui/button";
 import { relTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -12,9 +14,10 @@ export function DocTab() {
   const activeTabId = useStore((s) => s.activeTabId);
   const examples = useStore((s) => s.examples);
   const pushDialog = useStore((s) => s.pushDialog);
+  const baseUrl = useBaseUrl();
 
   const tab = openTabs.find((t) => t.id === activeTabId);
-  const route = routes.find((r) => r.id === tab?.routeId) ?? routes.find((r) => r.name === "Create user");
+  const route = routes.find((r) => r.id === tab?.routeId);
   if (!route) return <EmptyState title="Open a route to see its doc" />;
 
   const isWs = route.protocol === "websocket";
@@ -42,7 +45,7 @@ export function DocTab() {
   const curlLines =
     buildSnippet("cURL", {
       method: route.method,
-      url: snippetUrl("http://localhost:3000", route.path),
+      url: snippetUrl(baseUrl, route.path),
       body: routeBodyJson(route),
       isWs,
     }) ?? [];
@@ -55,12 +58,15 @@ export function DocTab() {
     >
       <div>
         <div className="text-base font-semibold text-ink">{route.name}</div>
-        <div className="mt-0.5 text-xs text-ink-3">created Mar 11 · updated {relTime(route.updatedAt)}</div>
+        <div className="mt-0.5 text-xs text-ink-3">
+          created {new Date(route.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })} · updated{" "}
+          {relTime(route.updatedAt)}
+        </div>
       </div>
       <p className="text-base leading-5 text-ink-2">{route.description}</p>
       {route.schemaRef ? (
-        <span className="inline-flex h-5 w-fit items-center rounded-md bg-accent-z-soft px-1.5 font-mono text-xs text-link-z">
-          {route.schemaRef}
+        <span className="inline-flex h-5 w-fit items-center rounded-md bg-accent-z-soft px-1.5">
+          <SourceRef fileRef={route.schemaRef} className="text-xs" />
         </span>
       ) : null}
 

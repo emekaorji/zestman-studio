@@ -1,6 +1,7 @@
 import { Check, Copy } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useStore } from "@/state/store";
+import { useBaseUrl } from "@/hooks/useBaseUrl";
 import { CapsHeader, MiniSwitch } from "@/components/primitives";
 import { Button } from "@/components/ui/button";
 import {
@@ -92,10 +93,11 @@ export function CodeTab() {
   const openTabs = useStore((s) => s.openTabs);
   const activeTabId = useStore((s) => s.activeTabId);
   const pushToast = useStore((s) => s.pushToast);
+  const baseUrl = useBaseUrl();
   const [copied, setCopied] = useState(false);
 
   const tab = openTabs.find((t) => t.id === activeTabId);
-  const route = routes.find((r) => r.id === tab?.routeId) ?? routes.find((r) => r.name === "Create user");
+  const route = routes.find((r) => r.id === tab?.routeId) ?? routes.find((r) => r.protocol === "http");
   const isWs = route?.protocol === "websocket";
 
   const languages = useMemo(() => snippetLanguages(isWs), [isWs]);
@@ -105,10 +107,7 @@ export function CodeTab() {
 
   const req = {
     method: route?.method ?? "POST",
-    url: snippetUrl(
-      resolveVars ? "http://localhost:3000" : "{{baseUrl}}",
-      route?.path ?? "/api/v1/users",
-    ),
+    url: snippetUrl(resolveVars ? baseUrl : "{{baseUrl}}", route?.path ?? "/"),
     body: route ? routeBodyJson(route) : null,
     isWs,
   };

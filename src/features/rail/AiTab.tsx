@@ -7,11 +7,18 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "
 import type { OperatorCard } from "@/state/slices/misc";
 import { cn } from "@/lib/utils";
 
-const SUGGESTIONS = [
-  "Draft a request for POST /users",
-  "Why did POST /orders/:id/cancel 500?",
-  "Generate tests for the users module",
-];
+/** Prompts grounded in what is actually open: the route, its last failure, its module. */
+function suggestionsFor(
+  route: { method: string; path: string; tags: string[] } | undefined,
+  lastFailure: { method: string; path: string; status: number } | undefined,
+): string[] {
+  const out: string[] = [];
+  if (route) out.push(`Draft a request for ${route.method} ${route.path}`);
+  if (lastFailure) out.push(`Why did ${lastFailure.method} ${lastFailure.path} ${lastFailure.status}?`);
+  if (route?.tags[0]) out.push(`Generate tests for the ${route.tags[0]} module`);
+  if (out.length === 0) out.push("What does this API do?", "Which routes have no examples?");
+  return out;
+}
 
 /** One audited operator action. Cards land one at a time, so they ease in. */
 function FeedCard({ card, index }: { card: OperatorCard; index: number }) {
@@ -62,6 +69,9 @@ function FeedCard({ card, index }: { card: OperatorCard; index: number }) {
                 <>
                   <Check size={16} strokeWidth={1.5} className="shrink-0 text-ok" />
                   <span className="text-base text-ok">Applied</span>
+                  {card.appliedFile ? (
+                    <span className="min-w-0 truncate font-mono text-xs text-ink-3">{card.appliedFile}</span>
+                  ) : null}
                 </>
               ) : (
                 <>
@@ -72,12 +82,12 @@ function FeedCard({ card, index }: { card: OperatorCard; index: number }) {
             </div>
           ) : (
             <div className="mt-2 flex gap-1.5">
-              <GhostButton size="sm" onClick={() => decide(card.id, "rejected")}>
+              <GhostButton size="sm" onClick={() => void decide(card.id, "rejected")}>
                 Reject
               </GhostButton>
               <Button
                 size="default"
-                onClick={() => decide(card.id, "accepted")}
+                onClick={() => void decide(card.id, "accepted")}
                 className="h-8 px-2.5 text-base font-medium transition-colors duration-[var(--dur-base)] ease-[var(--ease-in-out)]"
               >
                 Accept
@@ -97,6 +107,9 @@ export function AiTab() {
   const operatorFeed = useStore((s) => s.operatorFeed);
   const operatorThinking = useStore((s) => s.operatorThinking);
   const askOperator = useStore((s) => s.askOperator);
+  const route = useStore((s) => s.routes.find((r) => r.id === s.openTabs.find((t) => t.id === s.activeTabId)?.routeId));
+  const lastFailure = useStore((s) => s.historyEntries.find((e) => e.status >= 500 || e.status === 0));
+  const suggestions = suggestionsFor(route, lastFailure);
   const [input, setInput] = useState("");
 
   const submit = () => {
@@ -131,7 +144,7 @@ export function AiTab() {
             Ask about your API. Drafts requests, explains failures, writes tests — grounded in your code.
           </p>
           <div className="mt-3 flex flex-col gap-1.5">
-            {SUGGESTIONS.map((s, i) => (
+            {suggestions.map((s, i) => (
               <Button
                 key={s}
                 variant="outline"

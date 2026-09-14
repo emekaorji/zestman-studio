@@ -4,15 +4,20 @@ import {
   Copy,
   Download,
   GitBranch,
+  Loader2,
   RefreshCw,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useStore } from "@/state/store";
 import type { SpecsTab } from "@/state/types";
-import type { DriftChange, Route, SpecCommit } from "@/daemon/types";
+import type { DriftChange, DriftField, GitInfo, Route, SpecCommit } from "@/daemon/types";
+import { getClient } from "@/app/client";
+import { downloadJson } from "@/lib/download";
+import { relTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ROW_DATA, ROW_LG } from "@/lib/metrics";
 import { MethodBadge, Pill, SegmentedControl } from "@/components/primitives";
+import { SourceRef } from "@/components/SourceRef";
 import { DataTable, type ColumnDef } from "@/components/table/DataTable";
 import { TabStrip } from "@/components/tabstrip/TabStrip";
 import { Button } from "@/components/ui/button";
@@ -77,60 +82,46 @@ interface SpecParam {
   required: "required" | "optional";
 }
 
-const USERS_PARAMS: SpecParam[] = [
-  { name: "name", type: "string", required: "required" },
-  { name: "email", type: "string", required: "required" },
-  { name: "role", type: "string", required: "optional" },
-];
+/** Body fields the daemon derived from the route's schema. */
+function paramsFor(route: Route): SpecParam[] {
+  return route.docFields.map((f) => ({
+    name: f.name,
+    type: f.type,
+    required: f.required ? "required" : "optional",
+  }));
+}
 
-const RAW_OPENAPI = `{
-  "openapi": "3.0.3",
-  "info": {
-    "title": "test-backend-case-1",
-    "version": "1.0.0"
-  },
-  "servers": [{ "url": "http://localhost:3000" }],
-  "paths": {
-    "/api/v1/users": {
-      "get": {
-        "summary": "List users",
-        "tags": ["users"],
-        "responses": { "200": { "description": "OK" } }
-      },
-      "post": {
-        "summary": "Create a user",
-        "tags": ["users"],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["name", "email"],
-                "properties": {
-                  "name": { "type": "string", "minLength": 2, "maxLength": 64 },
-                  "email": { "type": "string", "format": "email" },
-                  "role": { "type": "string", "enum": ["member", "admin"] }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": { "description": "Created" },
-          "400": { "description": "Validation failed" }
-        }
-      }
-    },
-    "/api/v1/orders/{id}/cancel": {
-      "post": {
-        "summary": "Cancel an order",
-        "tags": ["orders"],
-        "responses": { "200": { "description": "OK" } }
-      }
-    }
+/** What the daemon's OpenAPI document tells us for the header line. */
+interface SpecSummary {
+  title: string | null;
+  version: string | null;
+  server: string | null;
+  paths: number;
+  operations: number;
+}
+
+const HTTP_VERBS = new Set(["get", "post", "put", "patch", "delete", "options", "head", "trace"]);
+
+function summarize(doc: unknown): SpecSummary {
+  const d = (doc && typeof doc === "object" ? doc : {}) as {
+    info?: { title?: unknown; version?: unknown };
+    servers?: Array<{ url?: unknown }>;
+    paths?: Record<string, Record<string, unknown>>;
+  };
+  const paths = d.paths && typeof d.paths === "object" ? d.paths : {};
+  let operations = 0;
+  for (const item of Object.values(paths)) {
+    if (!item || typeof item !== "object") continue;
+    operations += Object.keys(item).filter((k) => HTTP_VERBS.has(k.toLowerCase())).length;
   }
-}`;
+  return {
+    title: typeof d.info?.title === "string" ? d.info.title : null,
+    version: typeof d.info?.version === "string" ? d.info.version : null,
+    server: typeof d.servers?.[0]?.url === "string" ? d.servers[0].url : null,
+    paths: Object.keys(paths).length,
+    operations,
+  };
+}
 
 const PARAM_COLUMNS: Array<ColumnDef<SpecParam>> = [
   {
@@ -171,6 +162,11 @@ function Operation({
   open: boolean;
   onOpenChange: (next: boolean) => void;
 }) {
+  const examples = useStore((s) => s.examples);
+  const params = paramsFor(route);
+  const okCode = route.method === "POST" ? 201 : route.method === "DELETE" ? 204 : 200;
+  const example = examples.find((e) => e.routeId === route.id && e.status === okCode) ?? examples.find((e) => e.routeId === route.id);
+  const code = example?.status ?? okCode;
   return (
     <Collapsible open={open} onOpenChange={onOpenChange}>
       <CollapsibleTrigger
@@ -200,19 +196,25 @@ function Operation({
       </CollapsibleTrigger>
       <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
         <div className="border-b border-line/70 py-3 pl-4">
-          <div className="max-w-[620px]">
-            <DataTable
-              className="[&_th]:static"
-              label={`${route.method} ${route.path} request fields`}
-              columns={PARAM_COLUMNS}
-              rows={USERS_PARAMS}
-              rowKey={(p) => p.name}
-              rowHeight={ROW_DATA}
-            />
-          </div>
+          {params.length > 0 ? (
+            <div className="max-w-[620px]">
+              <DataTable
+                className="[&_th]:static"
+                label={`${route.method} ${route.path} request fields`}
+                columns={PARAM_COLUMNS}
+                rows={params}
+                rowKey={(p) => p.name}
+                rowHeight={ROW_DATA}
+              />
+            </div>
+          ) : (
+            <div className="flex h-8 items-center pl-2 text-base text-ink-3">No request body fields</div>
+          )}
           <div className="mt-3 flex items-center gap-1.5 pl-2">
-            <span className="font-mono text-sm font-semibold text-ok">201</span>
-            <span className="text-xs text-ink-3">· application/json · example attached</span>
+            <span className={cn("font-mono text-sm font-semibold", code < 400 ? "text-ok" : "text-err")}>{code}</span>
+            <span className="text-xs text-ink-3">
+              · application/json{example ? " · example attached" : ""}
+            </span>
           </div>
         </div>
       </CollapsibleContent>
@@ -222,58 +224,113 @@ function Operation({
 
 function DocumentTab() {
   const routes = useStore((s) => s.routes);
+  const environments = useStore((s) => s.environments);
+  const refreshSpec = useStore((s) => s.refreshSpec);
   const pushToast = useStore((s) => s.pushToast);
   const [mode, setMode] = useState<"rendered" | "raw">("rendered");
+  const [doc, setDoc] = useState<unknown>(null);
+  const [fetchedAt, setFetchedAt] = useState<number | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [regenerating, setRegenerating] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(
-    () => routes.find((r) => r.method === "POST" && r.path === "/api/v1/users")?.id ?? null,
+    () => routes.find((r) => r.protocol === "http" && r.method === "POST")?.id ?? routes[0]?.id ?? null,
   );
 
-  const byKey = (method: string, path: string) =>
-    routes.find((r) => r.method === method && r.path === path);
+  const loadDoc = async () => {
+    try {
+      const next = await getClient().getOpenApi();
+      setDoc(next);
+      setFetchedAt(Date.now());
+      setLoadError(null);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
-  const userOps: Array<{ route: Route | undefined; summary: string }> = [
-    { route: byKey("GET", "/api/v1/users"), summary: "List users" },
-    { route: byKey("POST", "/api/v1/users"), summary: "Create a user" },
-    { route: byKey("GET", "/api/v1/users/:id"), summary: "Get a user" },
-    { route: byKey("PATCH", "/api/v1/users/:id"), summary: "Update a user" },
-    { route: byKey("DELETE", "/api/v1/users/:id"), summary: "Delete a user" },
-  ];
-  const orderOps: Array<{ route: Route | undefined; summary: string }> = [
-    { route: byKey("GET", "/api/v1/orders"), summary: "List orders" },
-    { route: byKey("POST", "/api/v1/orders"), summary: "Create an order" },
-    { route: byKey("POST", "/api/v1/orders/:id/cancel"), summary: "Cancel an order" },
-  ];
+  useEffect(() => {
+    void loadDoc();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const renderOps = (ops: Array<{ route: Route | undefined; summary: string }>) =>
-    ops.map(({ route, summary }, i) =>
-      route ? (
-        <div
-          key={route.id}
-          style={{ animationDelay: `${Math.min(i, 8) * 15}ms` }}
-          className="animate-in fade-in-0 fill-mode-both duration-[var(--dur-base)] ease-[var(--ease-out)]"
-        >
-          <Operation
-            route={route}
-            summary={summary}
-            open={expandedId === route.id}
-            onOpenChange={(next) => setExpandedId(next ? route.id : null)}
-          />
-        </div>
-      ) : null,
-    );
+  const docText = useMemo(() => (doc == null ? "" : JSON.stringify(doc, null, 2)), [doc]);
+  const summary = useMemo(() => (doc == null ? null : summarize(doc)), [doc]);
+  const baseUrl = environments.find((e) => e.isActive)?.variables.find((v) => v.key === "baseUrl" && v.enabled)?.value;
+  const server = summary?.server ?? baseUrl ?? null;
+
+  /* One section per module (first tag), in the order routes were discovered. */
+  const groups = useMemo(() => {
+    const map = new Map<string, Route[]>();
+    for (const r of routes) {
+      if (r.protocol !== "http") continue;
+      const key = r.tags[0] ?? "other";
+      map.set(key, [...(map.get(key) ?? []), r]);
+    }
+    return [...map.entries()];
+  }, [routes]);
+
+  const renderOps = (ops: Route[]) =>
+    ops.map((route, i) => (
+      <div
+        key={route.id}
+        style={{ animationDelay: `${Math.min(i, 8) * 15}ms` }}
+        className="animate-in fade-in-0 fill-mode-both duration-[var(--dur-base)] ease-[var(--ease-out)]"
+      >
+        <Operation
+          route={route}
+          summary={route.name}
+          open={expandedId === route.id}
+          onOpenChange={(next) => setExpandedId(next ? route.id : null)}
+        />
+      </div>
+    ));
 
   const copySpec = () => {
-    void navigator.clipboard?.writeText(RAW_OPENAPI);
-    pushToast({ kind: "info", text: "Spec copied", sub: "OpenAPI 3.0.3 · JSON" });
+    if (!docText) return;
+    void navigator.clipboard?.writeText(docText);
+    pushToast({ kind: "info", text: "Spec copied", sub: "OpenAPI · JSON" });
   };
+
+  const downloadSpec = async () => {
+    try {
+      const latest = doc ?? (await getClient().getOpenApi());
+      downloadJson("openapi.json", latest);
+      pushToast({ kind: "info", text: "Spec downloaded", sub: "openapi.json" });
+    } catch {
+      /* the daemon's message is already toasted by the client */
+    }
+  };
+
+  const regenerate = async () => {
+    if (regenerating) return;
+    setRegenerating(true);
+    try {
+      const { operations } = await getClient().regenerateSpec();
+      await Promise.all([loadDoc(), refreshSpec()]);
+      pushToast({ kind: "info", text: "Spec regenerated", sub: `${operations} operations` });
+    } catch {
+      /* the daemon's message is already toasted by the client */
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  const meta = summary
+    ? [
+        fetchedAt ? `generated ${relTime(fetchedAt)}` : null,
+        `${summary.paths} paths`,
+        `${summary.operations} operations`,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : loadError
+      ? loadError
+      : "reading the spec…";
 
   return (
     <PageBody>
       <div className="flex min-h-9 flex-wrap items-center gap-x-3 gap-y-2">
-        <h1 className="shrink-0 text-md font-semibold text-ink">OpenAPI 3.0.3</h1>
-        <span className="min-w-0 truncate text-xs text-ink-3 max-md:order-last max-md:basis-full">
-          generated 2 m ago · 14 paths · 27 operations · merged with api.yaml (3 ops)
-        </span>
+        <h1 className="shrink-0 text-md font-semibold text-ink">OpenAPI</h1>
+        <span className="min-w-0 truncate text-xs text-ink-3 max-md:order-last max-md:basis-full">{meta}</span>
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <SegmentedControl
             options={[
@@ -290,17 +347,19 @@ function DocumentTab() {
           />
           <IconAction
             label="Download spec"
-            onClick={() =>
-              pushToast({ kind: "info", text: "Spec written", sub: ".zestman/openapi.json" })
-            }
+            onClick={() => void downloadSpec()}
             icon={<Download size={16} strokeWidth={1.5} />}
           />
           <IconAction
             label="Regenerate spec"
-            onClick={() =>
-              pushToast({ kind: "info", text: "Spec regenerated", sub: "27 operations" })
+            onClick={() => void regenerate()}
+            icon={
+              regenerating ? (
+                <Loader2 size={16} strokeWidth={1.5} className="animate-spin" />
+              ) : (
+                <RefreshCw size={16} strokeWidth={1.5} />
+              )
             }
-            icon={<RefreshCw size={16} strokeWidth={1.5} />}
           />
         </div>
       </div>
@@ -308,28 +367,29 @@ function DocumentTab() {
       {mode === "rendered" ? (
         <div className="animate-in fade-in-0 duration-[var(--dur-base)] ease-[var(--ease-out)]">
           <div className="mt-5">
-            <div className="text-base font-semibold text-ink">API Specification</div>
+            <div className="text-base font-semibold text-ink">{summary?.title ?? "API Specification"}</div>
             <div className="mt-1 font-mono text-sm text-ink-2">
-              v1.0.0 · server http://localhost:3000
+              {summary?.version ? `v${summary.version}` : "—"}
+              {server ? ` · server ${server}` : ""}
             </div>
           </div>
 
-          <SectionLabel className="mt-5">Users</SectionLabel>
-          {renderOps(userOps)}
-
-          <SectionLabel className="mt-5">Orders</SectionLabel>
-          {renderOps(orderOps)}
-
-          <div className="flex h-11 items-center pl-2 text-base text-ink-3">
-            … 14 more operations
-          </div>
+          {groups.map(([module, ops]) => (
+            <div key={module}>
+              <SectionLabel className="mt-5">{module}</SectionLabel>
+              {renderOps(ops)}
+            </div>
+          ))}
+          {groups.length === 0 ? (
+            <div className="flex h-11 items-center pl-2 text-base text-ink-3">No HTTP routes discovered yet</div>
+          ) : null}
         </div>
       ) : (
         <div className="mt-5 animate-in fade-in-0 duration-[var(--dur-base)] ease-[var(--ease-out)]">
           <div className="overflow-hidden rounded-lg border border-line">
             <CodeEditor
               ariaLabel="OpenAPI specification"
-              value={RAW_OPENAPI}
+              value={docText}
               language="json"
               readOnly
               minHeight="480px"
@@ -432,9 +492,13 @@ function DriftRow({
       <span className="shrink-0 font-mono text-sm text-ink">{change.path}</span>
       <span className="min-w-0 flex-1 truncate text-base text-ink-2">— {change.text}</span>
       {change.fileRef ? (
-        <span className="hidden shrink-0 font-mono text-sm text-link-z lg:inline">
-          {change.fileRef}
-        </span>
+        /* A row that is itself a button cannot nest another one — the diff
+           view it opens carries the same reference as a real link. */
+        onOpen ? (
+          <span className="hidden shrink-0 font-mono text-sm text-link-z lg:inline">{change.fileRef}</span>
+        ) : (
+          <SourceRef fileRef={change.fileRef} className="hidden shrink-0 lg:inline-flex" />
+        )
       ) : null}
     </>
   );
@@ -490,46 +554,93 @@ function BranchChip({
   );
 }
 
+function useGitInfo(): GitInfo | null {
+  const projectId = useStore((s) => s.activeProjectId);
+  const [info, setInfo] = useState<GitInfo | null>(null);
+  useEffect(() => {
+    let alive = true;
+    setInfo(null);
+    getClient()
+      .getGitInfo()
+      .then((g) => {
+        if (alive) setInfo(g);
+      })
+      .catch(() => {
+        if (alive) setInfo({ isRepo: false, branch: null, head: null, specDirty: false });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [projectId]);
+  return info;
+}
+
+function driftSummary(changes: DriftChange[]): string {
+  if (!changes.length) return "What is running matches the committed spec.json — nothing to write up.";
+  const n = (v: DriftChange["verdict"]) => changes.filter((c) => c.verdict === v).length;
+  const parts = [
+    [n("BREAKING"), "breaking"],
+    [n("ADDED"), "added"],
+    [n("REMOVED"), "removed"],
+    [n("AUTH"), "auth"],
+    [n("DOCS"), "docs"],
+  ] as Array<[number, string]>;
+  return `Against the committed spec.json the running API has ${parts
+    .filter(([c]) => c > 0)
+    .map(([c, l]) => `${c} ${l}`)
+    .join(" · ")} change${changes.length === 1 ? "" : "s"}. Commit .zestman/spec.json to record them.`;
+}
+
 function TimelineTab() {
   const specCommits = useStore((s) => s.specCommits);
   const driftChanges = useStore((s) => s.driftChanges);
   const navigate = useStore((s) => s.navigate);
-  const pushToast = useStore((s) => s.pushToast);
+  const git = useGitInfo();
 
   return (
     <PageBody>
       <div className="flex min-h-9 flex-wrap items-center gap-2">
         <h1 className="shrink-0 text-md font-semibold text-ink">Contract timeline</h1>
-        <BranchChip name="main" sha="a1b2c3d" />
-        <span className="text-xs text-ds-gray-600">→</span>
-        <BranchChip name="feat/orders-v2" sha="f9e8d7c" current />
+        {git === null ? null : git.isRepo ? (
+          <>
+            <BranchChip name={git.branch ?? "HEAD"} sha={git.head ?? "—"} />
+            <span className="text-xs text-ds-gray-600">→</span>
+            <BranchChip name="running" sha={git.specDirty ? "uncommitted" : "in sync"} current />
+          </>
+        ) : (
+          <span className="inline-flex h-8 items-center rounded-md border border-line px-2.5 font-mono text-sm text-ink-3">
+            not a git repository
+          </span>
+        )}
         <div className="ml-auto shrink-0">
           <Button
             type="button"
             variant="outline"
             size="lg"
-            onClick={() =>
-              pushToast({
-                kind: "info",
-                text: "PR check posted",
-                sub: "1 breaking · 1 added · 1 auth · 1 docs",
-              })
-            }
+            onClick={() => navigate({ go: "ci-setup" })}
             className={cn(
               "h-9 rounded-lg border-ds-gray-400 bg-transparent px-3 text-base font-medium text-ink-2",
               "transition-colors duration-[var(--dur-base)] ease-[var(--ease-in-out)]",
               "hover:bg-hoverbg hover:text-ink dark:bg-transparent dark:hover:bg-hoverbg",
             )}
           >
-            Post PR check
+            CI setup
           </Button>
         </div>
       </div>
 
-      <CommitStrip commits={specCommits} />
+      {specCommits.length ? (
+        <CommitStrip commits={specCommits} />
+      ) : (
+        <p className="mt-4 text-sm text-ink-3">
+          {git?.isRepo
+            ? "No commits touch .zestman/spec.json yet — commit it and every later change shows up here."
+            : "Initialise git and commit .zestman/spec.json to get a history of your API contract."}
+        </p>
+      )}
 
       <SectionLabel className="mt-5">
-        Changes <span className="normal-case">· feat/orders-v2 vs main</span>
+        Changes <span className="normal-case">· running vs committed .zestman/spec.json</span>
       </SectionLabel>
       <div className="border-t border-line">
         {driftChanges.map((dr, i) => (
@@ -544,64 +655,59 @@ function TimelineTab() {
             }
           />
         ))}
+        {driftChanges.length === 0 ? (
+          <div className="flex items-center text-base text-ink-3" style={{ height: ROW_DATA }}>
+            No drift — the running API matches the committed spec.
+          </div>
+        ) : null}
       </div>
 
-      <div className="mt-5 text-xs text-ink-3">
-        changelog paragraph auto-drafted — used by PR checks and the docs portal
-      </div>
+      <div className="mt-5 text-xs text-ink-3">{driftSummary(driftChanges)}</div>
     </PageBody>
   );
 }
 
 /* ── Route diff view ──────────────────────────────────────────────────────── */
 
-interface DiffParam {
-  name: string;
-  type: string;
-  required: string;
-  added?: boolean;
-}
-
-const MAIN_PARAMS: DiffParam[] = [
-  { name: "name", type: "string", required: "required" },
-  { name: "email", type: "string", required: "required" },
-  { name: "role", type: "string", required: "optional" },
-];
-
-const BRANCH_PARAMS: DiffParam[] = [
-  ...MAIN_PARAMS,
-  { name: "total", type: "number", required: "required", added: true },
-];
-
-function DiffColumn({ title, sha, params }: { title: string; sha: string; params: DiffParam[] }) {
+function DiffColumn({ title, sub, fields, other }: { title: string; sub: string; fields: DriftField[]; other: DriftField[] }) {
+  const otherByName = new Map(other.map((f) => [f.name, f]));
   return (
     <div>
       <div className="flex h-8 items-center border-b border-line">
         <span className="caps-label">
-          {title} <span className="normal-case">· {sha}</span>
+          {title} <span className="normal-case">· {sub}</span>
         </span>
       </div>
       <ul>
-        {params.map((p, i) => (
-          <li
-            key={p.name}
-            style={{ height: ROW_DATA, animationDelay: `${Math.min(i, 8) * 20}ms` }}
-            className={cn(
-              "flex items-center gap-3",
-              "animate-in fade-in-0 fill-mode-both duration-[var(--dur-base)] ease-[var(--ease-out)]",
-              p.added ? "my-1 rounded-md bg-err-soft px-2" : "border-b border-line/70",
-            )}
-          >
-            <span className="w-32 shrink-0 truncate font-mono text-sm text-ink">{p.name}</span>
-            <span className="w-24 shrink-0 font-mono text-sm text-ink-3">{p.type}</span>
-            <span className="text-base text-ink-3">{p.required}</span>
-            {p.added ? (
-              <Pill tone="err" className="ml-auto border-err-line bg-transparent font-semibold">
-                + new
-              </Pill>
-            ) : null}
+        {fields.map((p, i) => {
+          const o = otherByName.get(p.name);
+          const changed = !o || o.type !== p.type || o.required !== p.required;
+          return (
+            <li
+              key={p.name}
+              style={{ height: ROW_DATA, animationDelay: `${Math.min(i, 8) * 20}ms` }}
+              className={cn(
+                "flex items-center gap-3",
+                "animate-in fade-in-0 fill-mode-both duration-[var(--dur-base)] ease-[var(--ease-out)]",
+                changed ? "my-1 rounded-md bg-err-soft px-2" : "border-b border-line/70",
+              )}
+            >
+              <span className="w-32 shrink-0 truncate font-mono text-sm text-ink">{p.name}</span>
+              <span className="w-24 shrink-0 font-mono text-sm text-ink-3">{p.type}</span>
+              <span className="text-base text-ink-3">{p.required ? "required" : "optional"}</span>
+              {changed ? (
+                <Pill tone="err" className="ml-auto border-err-line bg-transparent font-semibold">
+                  {o ? "changed" : "+ new"}
+                </Pill>
+              ) : null}
+            </li>
+          );
+        })}
+        {fields.length === 0 ? (
+          <li className="flex items-center text-base text-ink-3" style={{ height: ROW_DATA }}>
+            no body fields
           </li>
-        ))}
+        ) : null}
       </ul>
     </div>
   );
@@ -639,17 +745,21 @@ function RouteDiffView({ change }: { change: DriftChange }) {
         )}
       >
         <span className="text-base font-medium text-err">
-          BREAKING — required field added to request body
+          {change.verdict} — {change.text}
         </span>
         <span className="rounded-full bg-ds-background-100 px-2.5 py-1 font-mono text-xs text-ink-2">
-          rule: request-required-added
+          committed spec.json vs running
         </span>
       </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-x-8 gap-y-6 lg:grid-cols-2">
-        <DiffColumn title="Main" sha="a1b2c3d" params={MAIN_PARAMS} />
-        <DiffColumn title="feat/orders-v2" sha="f9e8d7c" params={BRANCH_PARAMS} />
-      </div>
+      {change.fields ? (
+        <div className="mt-6 grid grid-cols-1 gap-x-8 gap-y-6 lg:grid-cols-2">
+          <DiffColumn title="Committed" sub=".zestman/spec.json" fields={change.fields.before} other={change.fields.after} />
+          <DiffColumn title="Running" sub="reported by the app" fields={change.fields.after} other={change.fields.before} />
+        </div>
+      ) : (
+        <p className="mt-6 text-base text-ink-3">This change is not about the request body; the line above is the whole diff.</p>
+      )}
 
       <SectionLabel className="mt-8">Blame</SectionLabel>
       <div className="border-t border-line">
@@ -657,17 +767,14 @@ function RouteDiffView({ change }: { change: DriftChange }) {
           className="flex items-center gap-1.5 border-b border-line/70 font-mono text-sm text-ink-2"
           style={{ height: ROW_DATA }}
         >
-          <span className="text-link-z">added</span>
-          <span className="text-ink-3">in</span>
-          <span className="text-link-z">f9e8d7c</span>
-          <span className="text-ds-gray-600">·</span>
-          <span className="truncate text-link-z">{change.fileRef ?? "orders.schema.ts:24"}</span>
-        </div>
-        <div
-          className="flex items-center border-b border-line/70 text-base text-ink-3"
-          style={{ height: ROW_DATA }}
-        >
-          by you · 2 h ago
+          {change.fileRef ? (
+            <>
+              <span className="text-ink-3">handler</span>
+              <SourceRef fileRef={change.fileRef} />
+            </>
+          ) : (
+            <span className="text-ink-3">no handler location known for this route</span>
+          )}
         </div>
       </div>
     </PageBody>

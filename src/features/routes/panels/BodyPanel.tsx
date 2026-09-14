@@ -1,9 +1,12 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { getClient } from "@/app/client";
+import { buildVarMap, resolveText } from "@/lib/variables";
 import { Paperclip } from "lucide-react";
 import type { BodyMode, FormRow, KVRow, RequestBody, Route } from "@/daemon/types";
 import type { OpenTab } from "@/state/slices/workbench";
 import { useStore } from "@/state/store";
 import { CapsHeader, Dot, GhostButton, Pill } from "@/components/primitives";
+import { SourceRef } from "@/components/SourceRef";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { CodeEditor } from "@/lib/codemirror/CodeEditor";
 import { id } from "@/lib/ids";
@@ -32,11 +35,47 @@ const ENTER = "animate-in fade-in-0 slide-in-from-top-1 duration-[var(--dur-base
 export function BodyPanel({ tab, route }: { tab: OpenTab; route: Route }) {
   const patchDraft = useStore((s) => s.patchDraft);
   const pushToast = useStore((s) => s.pushToast);
+  const environments = useStore((s) => s.environments);
+  const globals = useStore((s) => s.globals);
   const [bulk, setBulk] = useState(false);
   const [bulkText, setBulkText] = useState("");
+  const [fetchingSchema, setFetchingSchema] = useState(false);
+  const binaryInput = useRef<HTMLInputElement | null>(null);
 
   const body = tab.draft.body;
   const patchBody = (p: Partial<RequestBody>) => patchDraft(tab.id, { body: { ...body, ...p } });
+
+  const onBinaryPicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const up = await getClient().uploadFile(file);
+      patchBody({ binary: { fileName: up.fileName, size: up.size, fileId: up.fileId } });
+    } catch {
+      /* the client already toasted the daemon's message */
+    }
+  };
+
+  const refetchSchema = async () => {
+    if (fetchingSchema) return;
+    setFetchingSchema(true);
+    const active = environments.find((e) => e.isActive);
+    const { resolved } = resolveText(tab.draft.url, buildVarMap(globals, active?.variables));
+    try {
+      const r = await getClient().introspectGraphql(resolved);
+      if (r.error) {
+        pushToast({ kind: "info", text: "Introspection failed", sub: r.error });
+        return;
+      }
+      patchBody({ graphql: { ...body.graphql, schemaFetched: true, typeCount: r.typeCount } });
+      pushToast({ kind: "info", text: "Schema fetched", sub: `${r.typeCount} types · HTTP ${r.status}` });
+    } catch {
+      /* the client already toasted the daemon's message */
+    } finally {
+      setFetchingSchema(false);
+    }
+  };
 
   const toggleBulk = (rows: KVRow[], commit: (rows: KVRow[]) => void) => {
     if (!bulk) setBulkText(rowsToBulk(rows));
@@ -74,8 +113,8 @@ export function BodyPanel({ tab, route }: { tab: OpenTab; route: Route }) {
         </ToggleGroup>
         <div className="flex-1" />
         {route.schemaRef ? (
-          <Pill tone="accent" className="font-mono">
-            inferred · {route.schemaRef}
+          <Pill tone="accent" className="gap-1 font-mono">
+            inferred · <SourceRef fileRef={route.schemaRef} className="text-2xs" />
           </Pill>
         ) : null}
       </div>
@@ -160,15 +199,7 @@ export function BodyPanel({ tab, route }: { tab: OpenTab; route: Route }) {
       {body.mode === "binary" ? (
         <button
           type="button"
-          onClick={() =>
-            body.binary
-              ? patchBody({ binary: null })
-              : pushToast({
-                  kind: "info",
-                  text: "File picking needs the local daemon",
-                  sub: "the browser build cannot read your disk",
-                })
-          }
+          onClick={() => (body.binary ? patchBody({ binary: null }) : binaryInput.current?.click())}
           className={cn(
             "flex h-24 items-center justify-center gap-2 rounded-lg border border-dashed border-line bg-ds-gray-100 text-base text-ink-3",
             "transition-colors duration-[var(--dur-base)] ease-[var(--ease-in-out)]",
@@ -182,29 +213,22 @@ export function BodyPanel({ tab, route }: { tab: OpenTab; route: Route }) {
               {body.binary.fileName} · {(body.binary.size / 1024).toFixed(0)} KB — click to clear
             </span>
           ) : (
-            "Drop a file here or click to browse"
+            "Click to choose a file"
           )}
         </button>
       ) : null}
+      <input ref={binaryInput} type="file" className="hidden" aria-hidden tabIndex={-1} onChange={(e) => void onBinaryPicked(e)} />
 
       {body.mode === "graphql" ? (
         <div className={cn("flex flex-col gap-3", ENTER)}>
           <div className="flex h-8 items-center gap-2">
-            <Dot tone="ok" />
-            <span className="text-base text-ink-2">schema fetched · {body.graphql.typeCount} types</span>
+            <Dot tone={body.graphql.schemaFetched ? "ok" : "muted"} />
+            <span className="text-base text-ink-2">
+              {body.graphql.schemaFetched ? `schema fetched · ${body.graphql.typeCount} types` : "schema not fetched yet"}
+            </span>
             <div className="flex-1" />
-            <GhostButton
-              size="sm"
-              onClick={() => {
-                patchBody({ graphql: { ...body.graphql, schemaFetched: true } });
-                pushToast({
-                  kind: "info",
-                  text: "Schema refetched",
-                  sub: `${body.graphql.typeCount} types · no changes`,
-                });
-              }}
-            >
-              Refetch
+            <GhostButton size="sm" onClick={() => void refetchSchema()} disabled={fetchingSchema}>
+              {fetchingSchema ? "Fetching…" : body.graphql.schemaFetched ? "Refetch" : "Fetch schema"}
             </GhostButton>
           </div>
           <CapsHeader className="h-6">Query</CapsHeader>

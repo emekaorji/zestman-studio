@@ -22,7 +22,7 @@ export interface SourceFile {
   routeIds: string[];
 }
 
-export type Provenance = "static" | "inferred" | "manual" | "runtime";
+export type Provenance = "static" | "inferred" | "manual" | "runtime" | "spec";
 
 export interface SourceLocation {
   fileId: string;
@@ -45,6 +45,8 @@ export interface FormRow extends KVRow {
   type: "text" | "file";
   fileName?: string;
   fileSize?: number;
+  /** Id returned by the daemon's upload endpoint; the bytes live in the daemon's tmp store. */
+  fileId?: string;
 }
 
 export interface RequestBody {
@@ -52,7 +54,7 @@ export interface RequestBody {
   raw: { language: "json" | "text" | "xml" | "html" | "javascript"; text: string };
   formData: FormRow[];
   urlencoded: KVRow[];
-  binary: { fileName: string; size: number } | null;
+  binary: { fileName: string; size: number; fileId?: string } | null;
   graphql: { query: string; variables: string; schemaFetched: boolean; typeCount: number };
 }
 
@@ -172,6 +174,22 @@ export interface OAuthTokenRow {
   state: "active" | "expired";
   expiresLabel: string; // "expires in 52 m" | "expired 2 h ago"
   hasRefresh: boolean;
+}
+
+/** What the workbench sends: the tab's draft, resolved against the active env by the daemon. */
+export interface RequestDraft {
+  method: string;
+  url: string; // "{{baseUrl}}/api/v1/users"
+  params: KVRow[];
+  query: KVRow[];
+  headers: KVRow[];
+  body: RequestBody;
+  auth: RouteAuth;
+  scripts: RouteScripts;
+  settings: RouteSettings;
+  name: string;
+  description: string;
+  tags: string[];
 }
 
 /* ── Execution ──────────────────────────────────────────────────────────── */
@@ -344,6 +362,13 @@ export interface SpecCommit {
 
 export type DriftVerdict = "BREAKING" | "ADDED" | "REMOVED" | "DOCS" | "AUTH";
 
+/** One request-body field as it appears on either side of a change. */
+export interface DriftField {
+  name: string;
+  type: string;
+  required: boolean;
+}
+
 export interface DriftChange {
   id: string;
   verdict: DriftVerdict;
@@ -351,6 +376,16 @@ export interface DriftChange {
   path: string;
   text: string;
   fileRef: string | null;
+  /** Body fields before/after, when the change is about the request body. */
+  fields?: { before: DriftField[]; after: DriftField[] };
+}
+
+export interface GitInfo {
+  isRepo: boolean;
+  branch: string | null;
+  head: string | null;
+  /** Whether .zestman/spec.json differs from the committed version. */
+  specDirty: boolean;
 }
 
 /* ── Insights / diagnostics ─────────────────────────────────────────────── */
@@ -414,7 +449,16 @@ export interface XrayLink {
 }
 
 export type OperatorEvent =
-  | { t: "card"; kind: "ran-check" | "read-source" | "proposed-fix" | "note"; title: string; body?: string; diff?: Array<{ line: string; tone: "add" | "del" | "ctx" }>; pill?: string }
+  | {
+      t: "card";
+      kind: "ran-check" | "read-source" | "proposed-fix" | "note";
+      title: string;
+      body?: string;
+      diff?: Array<{ line: string; tone: "add" | "del" | "ctx" }>;
+      pill?: string;
+      /** Daemon-side id; present on cards that can be applied (proposed-fix). */
+      cardId?: string;
+    }
   | { t: "thinking"; on: boolean }
   | { t: "done" };
 

@@ -1,47 +1,70 @@
-import { CircleCheck, CircleX, RefreshCw, Sparkles } from "lucide-react";
+import { CircleCheck, CircleX, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
 import { GhostButton, Pill } from "@/components/primitives";
+import { SourceRef } from "@/components/SourceRef";
+import { getClient } from "@/app/client";
+import type { CheckDetail, CheckType } from "@/daemon/types";
 import { CodeEditor } from "@/lib/codemirror/CodeEditor";
 import { cn } from "@/lib/utils";
 import { useStore } from "@/state/store";
 import { BackLink, PageBody, PageHead, SectionLabel } from "./bits";
-
-const REQUEST_SENT = `{
-  "reason": "customer_request",
-  "items": 2,
-  "refund": "original_method",
-  "notify": true
-}`;
-
-const RESPONSE_500 = `{
-  "error": "body.total is required",
-  "code": "SCHEMA_VALIDATION"
-}`;
-
-const RESPONSE_200 = `{
-  "status": "ok"
-}`;
 
 /** Check-run detail: what was sent, what came back, the derived assertion. */
 export function CheckRunView({ routeId }: { routeId: string }) {
   const route = useStore((s) => s.routes.find((r) => r.id === routeId));
   const checks = useStore((s) => s.checks.find((c) => c.routeId === routeId));
   const navigate = useStore((s) => s.navigate);
-  const pushToast = useStore((s) => s.pushToast);
-  if (!route) return null;
+  const runChecks = useStore((s) => s.runChecks);
+  const askOperator = useStore((s) => s.askOperator);
 
   const failingEntry = Object.entries(checks?.cells ?? {}).find(([, cell]) => cell === "fail");
   const failing = failingEntry != null;
-  const checkType = failingEntry?.[0] ?? "responds";
+  const checkType = (failingEntry?.[0] ?? "responds") as CheckType;
 
-  // Failing canon = the cancel-order 500; passing runs show the route's own body + 200.
-  const requestSent = failing
-    ? REQUEST_SENT
-    : route.body.mode === "raw" && route.body.raw.text.trim()
-      ? route.body.raw.text
-      : `{}`;
-  const responseText = failing ? RESPONSE_500 : RESPONSE_200;
-  const statusCode = failing ? 500 : 200;
-  const schemaSource = failing ? "orders.schema.ts:18" : (route.schemaRef ?? "responds check · built-in");
+  const [detail, setDetail] = useState<CheckDetail | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [rerunning, setRerunning] = useState(false);
+  const [generation, setGeneration] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    setDetail(null);
+    setLoadError(null);
+    getClient()
+      .getCheckDetail(routeId, checkType)
+      .then((d) => {
+        if (alive) setDetail(d);
+      })
+      .catch((e: unknown) => {
+        if (alive) setLoadError(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      alive = false;
+    };
+  }, [routeId, checkType, generation]);
+
+  if (!route) return null;
+
+  const rerun = async () => {
+    if (rerunning) return;
+    setRerunning(true);
+    try {
+      await runChecks([routeId]);
+      setGeneration((g) => g + 1);
+    } catch {
+      /* the daemon's message is already toasted by the client */
+    } finally {
+      setRerunning(false);
+    }
+  };
+
+  const explain = () => {
+    navigate({ go: "rail", tab: "ai", open: true });
+    void askOperator(`Why is check ${checkType} failing for ${route.method} ${route.path}?`);
+  };
+
+  const statusCode = detail?.responseStatus ?? null;
+  const provenance = detail?.provenance ?? route.schemaRef ?? null;
 
   return (
     <PageBody>
@@ -59,28 +82,16 @@ export function CheckRunView({ routeId }: { routeId: string }) {
         }
         actions={
           <>
-            <GhostButton
-              onClick={() =>
-                pushToast({
-                  kind: "info",
-                  text: "Check re-ran",
-                  sub: failing ? "still failing · 500" : "still passing · 200",
-                })
-              }
-            >
-              <RefreshCw size={16} strokeWidth={1.5} />
+            <GhostButton onClick={() => void rerun()} disabled={rerunning} aria-busy={rerunning}>
+              {rerunning ? (
+                <Loader2 size={16} strokeWidth={1.5} className="animate-spin" />
+              ) : (
+                <RefreshCw size={16} strokeWidth={1.5} />
+              )}
               Re-run
             </GhostButton>
             {failing ? (
-              <GhostButton
-                onClick={() =>
-                  pushToast({
-                    kind: "operator",
-                    text: "orders.schema.ts now requires body.total",
-                    sub: "the request sent has no total — add it, or relax the schema",
-                  })
-                }
-              >
+              <GhostButton onClick={explain}>
                 <Sparkles size={16} strokeWidth={1.5} />
                 Explain
               </GhostButton>
@@ -96,16 +107,26 @@ export function CheckRunView({ routeId }: { routeId: string }) {
 
       <div className="mt-5 flex h-9 items-center gap-1.5 rounded-md bg-ds-gray-100 px-3">
         <span className="text-base text-ink-2">assertion derived from</span>
-        <span className="truncate font-mono text-sm text-link-z">{schemaSource}</span>
+        {provenance ? (
+          <SourceRef fileRef={provenance} />
+        ) : (
+          <span className="truncate font-mono text-sm text-ink-3">{checkType} check · built-in</span>
+        )}
         <span className="hidden text-xs text-ink-3 sm:inline">· updated when schema changes</span>
       </div>
+
+      {loadError ? (
+        <div className="mt-4 flex h-9 items-center rounded-md bg-err-soft px-3 font-mono text-xs text-err">
+          {loadError}
+        </div>
+      ) : null}
 
       <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-4 lg:grid-cols-2">
         <section>
           <SectionLabel>Request sent</SectionLabel>
           <CodeEditor
             ariaLabel="Request sent by this check"
-            value={requestSent}
+            value={detail?.requestBody ?? ""}
             language="json"
             readOnly
             minHeight="136px"
@@ -113,10 +134,10 @@ export function CheckRunView({ routeId }: { routeId: string }) {
           />
         </section>
         <section>
-          <SectionLabel>Response · {statusCode}</SectionLabel>
+          <SectionLabel>Response{statusCode != null ? ` · ${statusCode}` : ""}</SectionLabel>
           <CodeEditor
             ariaLabel="Response received by this check"
-            value={responseText}
+            value={detail?.responseBody ?? ""}
             language="json"
             readOnly
             minHeight="136px"
@@ -127,12 +148,8 @@ export function CheckRunView({ routeId }: { routeId: string }) {
 
       <SectionLabel className="mt-4">Assertion</SectionLabel>
       <div className="rounded-md border border-line bg-ds-gray-100 px-3 py-2 font-mono text-sm leading-5">
-        <div className="text-ink-2">
-          {failing ? "expect(status).toBeOneOf([201, 400])" : "expect(status).toBeOneOf([200])"}
-        </div>
-        <div className={cn("tabular-nums", failing ? "text-err" : "text-ok")}>
-          received: {statusCode}
-        </div>
+        <div className="text-ink-2">{detail?.assertion ?? (detail ? "" : "…")}</div>
+        <div className={cn("tabular-nums", failing ? "text-err" : "text-ok")}>{detail?.received ?? ""}</div>
       </div>
     </PageBody>
   );

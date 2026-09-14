@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { getClient } from "@/app/client";
 import { X } from "lucide-react";
 import type { FormRow, KVRow } from "@/daemon/types";
 import { Button } from "@/components/ui/button";
@@ -81,12 +82,32 @@ export function KeyValueTable<Row extends KVRow>({
     });
   };
 
+  /* A file row holds an upload id from the daemon; picking opens the browser's chooser. */
+  const fileInput = useRef<HTMLInputElement | null>(null);
+  const pendingRow = useRef<string | null>(null);
+  const pickFile = (rowId: string) => {
+    pendingRow.current = rowId;
+    fileInput.current?.click();
+  };
+  const onFilePicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const rowId = pendingRow.current;
+    e.target.value = "";
+    if (!file || !rowId) return;
+    try {
+      const up = await getClient().uploadFile(file);
+      patch(rowId, { type: "file", fileName: up.fileName, fileSize: up.size, fileId: up.fileId } as unknown as Partial<Row>);
+    } catch {
+      /* the client already toasted the daemon's message */
+    }
+  };
   const setType = (row: Row & Partial<FormRow>, next: "text" | "file") => {
-    const p: Partial<FormRow> =
-      next === "file"
-        ? { type: next, fileName: row.fileName ?? "avatar.png", fileSize: row.fileSize ?? 24 * 1024 }
-        : { type: next, fileName: undefined, fileSize: undefined };
-    patch(row.id, p as unknown as Partial<Row>);
+    if (next === "file") {
+      patch(row.id, { type: "file" } as unknown as Partial<Row>);
+      pickFile(row.id);
+      return;
+    }
+    patch(row.id, { type: "text", fileName: undefined, fileSize: undefined, fileId: undefined } as unknown as Partial<Row>);
   };
 
   const head = cn(
@@ -96,6 +117,7 @@ export function KeyValueTable<Row extends KVRow>({
   return (
     // The table has a floor width so columns never crush; below it, scroll sideways.
     <div ref={rootRef} className={cn("fade-scroll-x min-w-0 overflow-x-auto", className)}>
+      <input ref={fileInput} type="file" className="hidden" aria-hidden tabIndex={-1} onChange={(e) => void onFilePicked(e)} />
       <Table
         aria-label={label}
         className="w-full table-fixed border-separate border-spacing-0 text-base"
@@ -201,9 +223,14 @@ export function KeyValueTable<Row extends KVRow>({
                   {isFile ? (
                     <div className="flex items-center" style={{ height: ROW_MD }}>
                       <span className="inline-flex h-6 min-w-0 items-center gap-1.5 rounded-md bg-ds-gray-alpha-200 pr-1 pl-2 font-mono text-xs text-ink-2">
-                        <span className="truncate">
-                          {f.fileName ?? "file"} · {formatBytes(f.fileSize ?? 0)}
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => pickFile(row.id)}
+                          aria-label={f.fileName ? `Replace file ${f.fileName}` : "Choose a file"}
+                          className="truncate text-left hover:text-ink"
+                        >
+                          {f.fileName ? `${f.fileName} · ${formatBytes(f.fileSize ?? 0)}` : "Choose file…"}
+                        </button>
                         <Button
                           type="button"
                           variant="ghost"

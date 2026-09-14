@@ -12,7 +12,8 @@ import { useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { useStore } from "@/state/store";
 import type { InsightsTab } from "@/state/types";
-import type { Diagnostic, HistoryEntry, Mock, Route } from "@/daemon/types";
+import type { Diagnostic, HistoryEntry, Mock, Route, Schedule } from "@/daemon/types";
+import { SourceRef } from "@/components/SourceRef";
 import { cn } from "@/lib/utils";
 import {
   AccentButton,
@@ -52,21 +53,6 @@ function IconWell({ children }: { children: ReactNode }) {
 
 /* ── Traffic: derived route stats ─────────────────────────────────────────── */
 
-/** p50 per route — surfaced by the daemon's traffic aggregation (case1 canon). */
-const P50: Record<string, number> = {
-  "GET /api/v1/users": 38,
-  "POST /api/v1/users": 84,
-  "GET /api/v1/users/:id": 42,
-  "PATCH /api/v1/users/:id": 51,
-  "DELETE /api/v1/users/:id": 63,
-  "GET /api/v1/orders": 46,
-  "POST /api/v1/orders": 118,
-  "GET /api/v1/orders/:id": 51,
-  "PATCH /api/v1/orders/:id/status": 63,
-  "POST /api/v1/orders/:id/cancel": 71,
-  "GET /health": 4,
-};
-
 interface TrafficRow {
   route: Route;
   lastStatus: number | null;
@@ -75,10 +61,27 @@ interface TrafficRow {
   mocked: boolean;
 }
 
-function buildTrafficRows(routes: Route[], history: HistoryEntry[], mocks: Mock[]): TrafficRow[] {
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+}
+
+/** A schedule covers a route when its scope is "All routes…" or names the route. */
+function isMonitored(route: Route, schedules: Schedule[]): boolean {
+  return schedules.some(
+    (sch) => sch.enabled && (/^all routes/i.test(sch.scope) || sch.scope.includes(`${route.method} ${route.path}`)),
+  );
+}
+
+function buildTrafficRows(routes: Route[], history: HistoryEntry[], mocks: Mock[], schedules: Schedule[]): TrafficRow[] {
   const lastByRoute = new Map<string, number>();
+  const msByRoute = new Map<string, number[]>();
   for (const e of [...history].sort((a, b) => a.at - b.at)) {
-    if (e.routeId) lastByRoute.set(e.routeId, e.status);
+    if (!e.routeId) continue;
+    lastByRoute.set(e.routeId, e.status);
+    msByRoute.set(e.routeId, [...(msByRoute.get(e.routeId) ?? []), e.ms]);
   }
   const mockedRouteIds = new Set(mocks.filter((m) => m.enabled).map((m) => m.routeId));
   return routes
@@ -86,8 +89,8 @@ function buildTrafficRows(routes: Route[], history: HistoryEntry[], mocks: Mock[
     .map((r) => ({
       route: r,
       lastStatus: lastByRoute.get(r.id) ?? null,
-      p50: P50[`${r.method} ${r.path}`] ?? null,
-      monitored: r.method === "GET" && r.path === "/api/v1/users",
+      p50: median(msByRoute.get(r.id) ?? []),
+      monitored: isMonitored(r, schedules),
       mocked: mockedRouteIds.has(r.id),
     }));
 }
@@ -173,7 +176,7 @@ function AnalyticsBand() {
       <StatCell
         label="Requests · Today"
         value={insights.requestsToday}
-        footnote="last: 09:42"
+        footnote="by hour"
         className="pl-0"
       >
         <SparkBars
@@ -274,27 +277,17 @@ function bandOf(status: number | null | undefined): StatusBand {
   return "2xx";
 }
 
-const GROUP_ORDER = ["users", "orders", "app"] as const;
-
 function TrafficTab() {
   const routes = useStore((s) => s.routes);
   const historyEntries = useStore((s) => s.historyEntries);
   const mocks = useStore((s) => s.mocks);
+  const schedules = useStore((s) => s.schedules);
   const insights = useStore((s) => s.insights);
   const pushDialog = useStore((s) => s.pushDialog);
+  const setRunnerScope = useStore((s) => s.setRunnerScope);
 
   const [filter, setFilter] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(() => {
-    const init = routes
-      .filter(
-        (r) =>
-          (r.method === "GET" && r.path === "/api/v1/users") ||
-          (r.method === "POST" && r.path === "/api/v1/users") ||
-          (r.method === "GET" && r.path === "/api/v1/users/:id"),
-      )
-      .map((r) => r.id);
-    return new Set(init);
-  });
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
 
   /* Toolbar state. Every control below drives one of these — none of them are
      decoration. */
@@ -310,8 +303,8 @@ function TrafficTab() {
   const [dense, setDense] = usePersistentState<boolean>("zestman:ui:insights-dense:v1", false);
 
   const allRows = useMemo(
-    () => buildTrafficRows(routes, historyEntries, mocks),
-    [routes, historyEntries, mocks],
+    () => buildTrafficRows(routes, historyEntries, mocks, schedules),
+    [routes, historyEntries, mocks, schedules],
   );
 
   const fileNames = useMemo(
@@ -344,8 +337,8 @@ function TrafficTab() {
           ? (r.route.sourceLocations[0]?.file.split(":")[0] ?? "—")
           : r.route.method;
 
-    const order =
-      groupBy === "module" ? GROUP_ORDER : [...new Set(visible.map(keyOf))].sort();
+    // Modules keep discovery order (the sidebar's order); other groupings sort.
+    const order = groupBy === "module" ? [...new Set(visible.map(keyOf))] : [...new Set(visible.map(keyOf))].sort();
 
     return order
       .map((key) => {
@@ -389,9 +382,12 @@ function TrafficTab() {
       // Path and status are what you scan for; the file is one tap away.
       hideBelow: "md",
       width: 240,
-      cell: (r) => (
-        <span className="truncate font-mono text-sm text-ink-3">{r.route.sourceLocations[0]?.file}</span>
-      ),
+      cell: (r) =>
+        r.route.sourceLocations[0] ? (
+          <SourceRef fileRef={r.route.sourceLocations[0].file} muted />
+        ) : (
+          <span className="font-mono text-sm text-ink-3">—</span>
+        ),
     },
     {
       id: "schema",
@@ -560,7 +556,14 @@ function TrafficTab() {
           >
             <Rows3 size={16} strokeWidth={1.5} />
           </Button>
-          <AccentButton className="ml-1" onClick={() => pushDialog({ kind: "runner", scope: "selection" })}>
+          <AccentButton
+            className="ml-1"
+            disabled={selected.size === 0}
+            onClick={() => {
+              setRunnerScope([...selected]);
+              pushDialog({ kind: "runner", scope: "selection" });
+            }}
+          >
             Run {selected.size} selected
           </AccentButton>
         </div>
@@ -578,18 +581,13 @@ function TrafficTab() {
           rowKey={(r) => r.route.id}
           onRowClick={(r) => toggle(r.route.id)}
           isSelected={(r) => selected.has(r.route.id)}
-          trailing={
-            <div className="flex h-8 items-center pl-[104px] text-base text-ink-3">
-              … 16 more in posts, categories, products
-            </div>
-          }
         />
       </div>
 
       {/* Footer */}
       <div className="flex h-8 shrink-0 items-center gap-1.5 border-t border-line px-4 sm:px-7 font-mono text-xs text-ink-3 min-w-0 overflow-hidden whitespace-nowrap [&>*]:min-w-0 [&>*]:truncate">
         <span className="tabular-nums">
-          27 routes · {selected.size} selected · p95 {insights?.p95 ?? "—"} ms ·
+          {allRows.length} routes · {selected.size} selected · p95 {insights?.p95 ?? "—"} ms ·
         </span>
         <Dot tone="ok" />
         <span>watching</span>
@@ -615,8 +613,12 @@ function LevelIcon({ level }: { level: Diagnostic["level"] }) {
   return <Info size={16} strokeWidth={1.5} className="text-ink-3" />;
 }
 
+/** "routes.ts:88" is a file ref; "watcher" / "scanner" are subsystems. */
+const isFileRef = (source: string) => /\.[A-Za-z0-9]+(?::\d+)?$/.test(source) && !/\s/.test(source);
+
 function DiagnosticsTab() {
   const diagnostics = useStore((s) => s.diagnostics);
+  const pushDialog = useStore((s) => s.pushDialog);
   const [filter, setFilter] = useState<DiagFilter>("all");
 
   const counts = {
@@ -663,14 +665,11 @@ function DiagnosticsTab() {
       width: 260,
       cell: (r) =>
         r.kind === "diag" ? (
-          <span
-            className={cn(
-              "truncate font-mono text-sm",
-              r.diag.level === "error" ? "text-link-z" : "text-ink-3",
-            )}
-          >
-            {r.diag.source}
-          </span>
+          isFileRef(r.diag.source) ? (
+            <SourceRef fileRef={r.diag.source} muted={r.diag.level !== "error"} />
+          ) : (
+            <span className="truncate font-mono text-sm text-ink-3">{r.diag.source}</span>
+          )
         ) : (
           <span aria-hidden />
         ),
@@ -709,8 +708,7 @@ function DiagnosticsTab() {
       >
         <h1 className="shrink-0 text-md font-semibold text-ink">Diagnostics</h1>
         <span className="truncate text-base text-ink-3 tabular-nums">
-          last scan 2 m ago · {plural(counts.errors, "error")} · {plural(counts.warnings, "warning")} ·{" "}
-          {counts.info} info
+          {plural(counts.errors, "error")} · {plural(counts.warnings, "warning")} · {counts.info} info
         </span>
         <div className="ml-auto flex shrink-0 items-center gap-3">
           <SegmentedControl<DiagFilter>
@@ -723,7 +721,7 @@ function DiagnosticsTab() {
             value={filter}
             onChange={setFilter}
           />
-          <GhostButton>Re-scan</GhostButton>
+          <GhostButton onClick={() => pushDialog({ kind: "scan-onboarding" })}>Re-sync</GhostButton>
         </div>
       </div>
 

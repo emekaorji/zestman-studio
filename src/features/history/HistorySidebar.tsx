@@ -11,6 +11,7 @@ export function HistorySidebar() {
   const navigate = useStore((s) => s.navigate);
   const pushDialog = useStore((s) => s.pushDialog);
   const pushToast = useStore((s) => s.pushToast);
+  const clearHistoryAction = useStore((s) => s.clearHistory);
   const mode = useStore((s) => s.sections.history.mode);
   const day = useStore((s) => s.sections.history.day);
   const historyDays = useStore((s) => s.historyDays);
@@ -28,8 +29,9 @@ export function HistorySidebar() {
       body: "Deletes every recorded request in .zestman/history/. This cannot be undone.",
       confirmLabel: "Clear history",
       onConfirm: () => {
-        useStore.setState({ historyEntries: [] });
-        pushToast({ kind: "info", text: "History cleared", sub: ".zestman/history/ emptied" });
+        void clearHistoryAction()
+          .then(() => pushToast({ kind: "info", text: "History cleared", sub: ".zestman/history/ emptied" }))
+          .catch(() => undefined);
       },
     });
   };

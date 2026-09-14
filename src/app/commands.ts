@@ -45,9 +45,12 @@ export function buildCommands(store: StudioStore): PaletteCommand[] {
   /* ── ACTIONS ───────────────────────────────────────────────────────── */
   const httpCount = store.routes.filter((r) => r.protocol === "http").length;
   const targetEnv = store.environments.find((e) => !e.isActive);
-  const createUser = store.routes.find((r) => r.method === "POST" && r.path === "/api/v1/users");
-  const exampleCount = createUser
-    ? store.examples.filter((e) => e.routeId === createUser.id).length
+  /* Examples for the route open in the workbench (or the first HTTP route). */
+  const openRouteId = store.openTabs.find((t) => t.id === store.activeTabId)?.routeId;
+  const exampleRoute =
+    store.routes.find((r) => r.id === openRouteId) ?? store.routes.find((r) => r.protocol === "http");
+  const exampleCount = exampleRoute
+    ? store.examples.filter((e) => e.routeId === exampleRoute.id).length
     : 0;
 
   commands.push({
@@ -57,7 +60,9 @@ export function buildCommands(store: StudioStore): PaletteCommand[] {
     kbd: "⌘⇧R",
     run: () => {
       closePalette();
-      useStore.getState().pushDialog({ kind: "runner", scope: "all" });
+      const s = useStore.getState();
+      s.setRunnerScope(null);
+      s.pushDialog({ kind: "runner", scope: "all" });
     },
   });
 
@@ -117,14 +122,14 @@ export function buildCommands(store: StudioStore): PaletteCommand[] {
     },
   );
 
-  if (createUser) {
+  if (exampleRoute) {
     commands.push({
       id: "act:examples",
       group: "actions",
-      label: `Examples — POST /users (${exampleCount})`,
+      label: `Examples — ${exampleRoute.method} ${exampleRoute.path} (${exampleCount})`,
       run: () => {
         closePalette();
-        useStore.getState().pushDialog({ kind: "examples", routeId: createUser.id });
+        useStore.getState().pushDialog({ kind: "examples", routeId: exampleRoute.id });
       },
     });
   }

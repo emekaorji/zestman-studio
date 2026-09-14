@@ -1,4 +1,4 @@
-import { CircleCheck, CircleX, MoveRight, Play, Plus, Send, TriangleAlert } from "lucide-react";
+import { CircleCheck, CircleX, Loader2, MoveRight, Play, Plus, Send, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AccentButton, GhostButton, MethodBadge, Pill, VarChip } from "@/components/primitives";
 import { DataTable, type ColumnDef } from "@/components/table/DataTable";
@@ -6,6 +6,7 @@ import { TabStrip } from "@/components/tabstrip/TabStrip";
 import type { Flow, FlowStep, KVRow, Route } from "@/daemon/types";
 import { CodeEditor } from "@/lib/codemirror/CodeEditor";
 import { relTime } from "@/lib/format";
+import { id } from "@/lib/ids";
 import { ROW_DATA, ROW_LG } from "@/lib/metrics";
 import { methodClass } from "@/lib/methods";
 import { cn } from "@/lib/utils";
@@ -113,12 +114,50 @@ function StepRow({
 
 /* ── Flow editor ──────────────────────────────────────────────────────────── */
 
+/** No flow yet: one action, nothing else to look at. */
+function NoFlows() {
+  const saveFlow = useStore((s) => s.saveFlow);
+  const navigate = useStore((s) => s.navigate);
+  const flows = useStore((s) => s.flows);
+  const create = async () => {
+    const flowId = id("flow");
+    const name = `flow-${flows.length + 1}`;
+    try {
+      const saved = await saveFlow({ id: flowId, name, file: `.zestman/tests/flows/${flowId}.json`, steps: [], lastRun: null });
+      navigate({ go: "tests", tab: "flows", id: saved.id });
+    } catch {
+      /* the daemon's message is already toasted by the client */
+    }
+  };
+  return (
+    <PageBody>
+      <PageHead
+        title="Flows"
+        actions={
+          <AccentButton onClick={create}>
+            <Plus size={16} strokeWidth={1.5} />
+            New flow
+          </AccentButton>
+        }
+      />
+      <p className="mt-4 max-w-[52ch] text-base text-ink-2">
+        A flow runs routes in order and passes values between them — create a user, then create an order for that user. Flows live in{" "}
+        <span className="font-mono text-sm">.zestman/tests/flows/</span> and travel with the repository.
+      </p>
+    </PageBody>
+  );
+}
+
 /** Flow editor — step cards on the left, mini workbench or run view on the right. */
 export function FlowEditor({ flowId, run }: { flowId: string | null; run: boolean }) {
   const flows = useStore((s) => s.flows);
   const routes = useStore((s) => s.routes);
   const navigate = useStore((s) => s.navigate);
   const pushToast = useStore((s) => s.pushToast);
+  const runFlowAction = useStore((s) => s.runFlow);
+  const saveFlow = useStore((s) => s.saveFlow);
+  const openTabs = useStore((s) => s.openTabs);
+  const activeTabId = useStore((s) => s.activeTabId);
 
   const flow: Flow | undefined = flows.find((f) => f.id === flowId) ?? flows[0];
   const routeById = useMemo(() => new Map(routes.map((r) => [r.id, r])), [routes]);
@@ -126,6 +165,39 @@ export function FlowEditor({ flowId, run }: { flowId: string | null; run: boolea
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [bodies, setBodies] = useState<Record<string, string>>({});
   const [stepTab, setStepTab] = useState<"params" | "body">("body");
+  const [running, setRunning] = useState(false);
+
+  const runFlow = async () => {
+    if (!flow || running) return;
+    setRunning(true);
+    try {
+      const ran = await runFlowAction(flow.id);
+      navigate({ go: "flowRun", flowId: ran.id });
+    } catch {
+      /* the daemon's message is already toasted by the client */
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  /* Append the route open in the workbench (or the first HTTP route) as a step. */
+  const addStep = async () => {
+    if (!flow) return;
+    const openRouteId = openTabs.find((t) => t.id === activeTabId)?.routeId ?? openTabs[0]?.routeId;
+    const route =
+      (openRouteId ? routeById.get(openRouteId) : undefined) ?? routes.find((r) => r.protocol === "http");
+    if (!route) {
+      pushToast({ kind: "info", text: "No route to add", sub: "open a route in the workbench first" });
+      return;
+    }
+    const step: FlowStep = { id: id("st"), routeId: route.id };
+    try {
+      await saveFlow({ ...flow, steps: [...flow.steps, step] });
+      setSelectedId(step.id);
+    } catch {
+      /* the daemon's message is already toasted by the client */
+    }
+  };
 
   useEffect(() => {
     // Default selection: step 2 when present, else the first step.
@@ -133,7 +205,7 @@ export function FlowEditor({ flowId, run }: { flowId: string | null; run: boolea
     setStepTab("body");
   }, [flow?.id, flow?.steps]);
 
-  if (!flow) return null;
+  if (!flow) return <NoFlows />;
 
   const selectedIdx = Math.max(
     0,
@@ -165,8 +237,12 @@ export function FlowEditor({ flowId, run }: { flowId: string | null; run: boolea
       <PageHead
         title={flow.name}
         actions={
-          <AccentButton onClick={() => navigate({ go: "flowRun", flowId: flow.id })}>
-            <Play size={16} strokeWidth={1.5} />
+          <AccentButton onClick={() => void runFlow()} disabled={running} aria-busy={running}>
+            {running ? (
+              <Loader2 size={16} strokeWidth={1.5} className="animate-spin" />
+            ) : (
+              <Play size={16} strokeWidth={1.5} />
+            )}
             Run flow
           </AccentButton>
         }
@@ -193,16 +269,7 @@ export function FlowEditor({ flowId, run }: { flowId: string | null; run: boolea
               />
             ))}
           </div>
-          <GhostButton
-            className="mt-3"
-            onClick={() =>
-              pushToast({
-                kind: "info",
-                text: "Pick a route to append",
-                sub: "coming from the routes list",
-              })
-            }
-          >
+          <GhostButton className="mt-3" onClick={() => void addStep()}>
             <Plus size={16} strokeWidth={1.5} />
             Add step
           </GhostButton>
@@ -211,7 +278,7 @@ export function FlowEditor({ flowId, run }: { flowId: string | null; run: boolea
         {/* Right column */}
         <div className="min-w-0 flex-1">
           {run ? (
-            <FlowRunPane flow={flow} routeById={routeById} />
+            <FlowRunPane flow={flow} routeById={routeById} onRerun={runFlow} running={running} />
           ) : selected && selectedRoute ? (
             /* Keyed on the step so re-selecting replays the enter animation:
                the pane fades and slides 4px rather than swapping instantly. */
@@ -310,8 +377,17 @@ export function FlowEditor({ flowId, run }: { flowId: string | null; run: boolea
 /* ── Run pane ─────────────────────────────────────────────────────────────── */
 
 /** Run swimlanes — one row per step with latency bar and failure strip. */
-function FlowRunPane({ flow, routeById }: { flow: Flow; routeById: Map<string, Route> }) {
-  const pushToast = useStore((s) => s.pushToast);
+function FlowRunPane({
+  flow,
+  routeById,
+  onRerun,
+  running,
+}: {
+  flow: Flow;
+  routeById: Map<string, Route>;
+  onRerun: () => Promise<void>;
+  running: boolean;
+}) {
   const lastRun = flow.lastRun;
   const allPassed = lastRun != null && lastRun.passed === lastRun.total;
 
@@ -367,17 +443,8 @@ function FlowRunPane({ flow, routeById }: { flow: Flow; routeById: Map<string, R
                   <span className="min-w-0 truncate font-mono text-sm text-err">
                     {step.failNote}
                   </span>
-                  <GhostButton
-                    size="sm"
-                    onClick={() =>
-                      pushToast({
-                        kind: "info",
-                        text: `Re-running from step ${i + 1}`,
-                        sub: "earlier extractions are reused",
-                      })
-                    }
-                  >
-                    Re-run from step {i + 1}
+                  <GhostButton size="sm" onClick={() => void onRerun()} disabled={running}>
+                    Re-run flow
                   </GhostButton>
                 </div>
               ) : null}

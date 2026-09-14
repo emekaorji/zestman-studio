@@ -37,7 +37,7 @@ const UI_DEFAULTS: UiPersisted = {
   railResolveVars: false,
   runnerIterations: 3,
   onboarded: false,
-  activeProjectId: "case1",
+  activeProjectId: "",
 };
 
 export function loadUi(): UiPersisted {

@@ -14,6 +14,8 @@ export function ExamplesDialog({ routeId }: { routeId: string }) {
   const storeExamples = useStore((s) => s.examples);
   const saveExample = useStore((s) => s.saveExample);
   const deleteExample = useStore((s) => s.deleteExample);
+  const mocks = useStore((s) => s.mocks);
+  const saveMock = useStore((s) => s.saveMock);
   const mockServer = useStore((s) => s.mockServer);
   const popDialog = useStore((s) => s.popDialog);
   const pushToast = useStore((s) => s.pushToast);
@@ -44,6 +46,34 @@ export function ExamplesDialog({ routeId }: { routeId: string }) {
     };
     void saveExample(example);
     setSelId(example.id);
+  };
+
+  /* Seed the route's mock (or create one) from the selected example. */
+  const useInMock = async () => {
+    if (!sel) return;
+    const existing = mocks.find((m) => m.routeId === routeId);
+    const stamp = Date.now().toString(36);
+    const mock = existing
+      ? { ...existing, statusCode: sel.status, body: sel.body }
+      : {
+          id: `mock_${stamp}`,
+          name: sel.name,
+          routeId,
+          statusCode: sel.status,
+          delayMs: null,
+          enabled: true,
+          headers: [{ id: `mh_ct_${stamp}`, key: "Content-Type", value: "application/json", description: "", enabled: true }],
+          body: sel.body,
+          recentHits: [],
+        };
+    try {
+      await saveMock(mock);
+      if (!sel.usedByMock) await saveExample({ ...sel, usedByMock: true });
+      pushToast({ kind: "info", text: `“${sel.name}” set as mock response`, sub: mock.name });
+      popDialog();
+    } catch {
+      /* the daemon's message is already toasted by the client */
+    }
   };
 
   const applyToEditor = () => {
@@ -84,13 +114,7 @@ export function ExamplesDialog({ routeId }: { routeId: string }) {
               <GhostButton onClick={applyToEditor} disabled={!sel}>
                 Apply to editor
               </GhostButton>
-              <AccentButton
-                disabled={!sel}
-                onClick={() => {
-                  if (sel) pushToast({ kind: "info", text: `“${sel.name}” set as mock response` });
-                  popDialog();
-                }}
-              >
+              <AccentButton disabled={!sel} onClick={() => void useInMock()}>
                 Use in mock
               </AccentButton>
             </>
@@ -166,7 +190,7 @@ export function ExamplesDialog({ routeId }: { routeId: string }) {
                 <div className="flex h-7 items-center gap-2">
                   <Dot tone="ok" />
                   <span className="text-base text-ink-2">
-                    mock “{sel.name}” (:{mockServer?.port ?? 23501})
+                    mock “{sel.name}”{mockServer ? ` (:${mockServer.port})` : ""}
                   </span>
                 </div>
               ) : null}

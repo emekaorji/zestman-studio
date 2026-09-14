@@ -1,5 +1,5 @@
-import { ChevronDown, ChevronRight, Copy, FileCode2, Pencil } from "lucide-react";
-import { useState } from "react";
+import { ChevronDown, ChevronRight, Copy, FileCode2, Loader2, Pencil } from "lucide-react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import {
   DropdownMenu,
@@ -10,10 +10,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { usePersistentState } from "@/state/persist";
 import { useStore } from "@/state/store";
+import { Markdown } from "@/components/Markdown";
 import type { Route } from "@/daemon/types";
+import type { DocPageContent } from "@/daemon/client";
+import { getClient } from "@/app/client";
+import { useBaseUrl } from "@/hooks/useBaseUrl";
 import { cn } from "@/lib/utils";
 import { formatBytes, statusText } from "@/lib/format";
-import { GhostButton, MethodBadge, SegmentedControl, StatusChip } from "@/components/primitives";
+import { AccentButton, GhostButton, MethodBadge, SegmentedControl, StatusChip } from "@/components/primitives";
+import { SourceRef } from "@/components/SourceRef";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { CodeEditor } from "@/lib/codemirror/CodeEditor";
@@ -75,8 +80,8 @@ const ERROR_400 = `{\n  "error": "Validation failed",\n  "issues": [\n    { "pat
 
 type SnippetLang = "curl" | "js" | "python";
 
-function exampleUrl(route: Route): string {
-  return `http://localhost:3000${route.path.replace(":id", "8412")}`;
+function exampleUrl(route: Route, baseUrl: string): string {
+  return `${baseUrl}${route.path}`;
 }
 
 function bodyLines(route: Route, indent: string): string[] {
@@ -84,8 +89,8 @@ function bodyLines(route: Route, indent: string): string[] {
   return route.body.raw.text.split("\n").map((l, i) => (i === 0 ? l : indent + l));
 }
 
-function snippetFor(route: Route, lang: SnippetLang): string {
-  const url = exampleUrl(route);
+function snippetFor(route: Route, lang: SnippetLang, baseUrl: string): string {
+  const url = exampleUrl(route, baseUrl);
   const hasBody = route.body.mode === "raw" && route.body.raw.text.length > 0;
   if (lang === "curl") {
     const lines = [
@@ -296,6 +301,7 @@ function ResponseSection({ route }: { route: Route }) {
 
 function ExamplesColumn({ route }: { route: Route }) {
   const examples = useStore((s) => s.examples);
+  const baseUrl = useBaseUrl();
   const [lang, setLang] = usePersistentState<SnippetLang>("zestman:ui:docs-lang:v1", "curl");
   const okCode = route.method === "POST" ? 201 : route.method === "DELETE" ? 204 : 200;
 
@@ -345,7 +351,7 @@ function ExamplesColumn({ route }: { route: Route }) {
       </div>
 
       <div className="mt-7 mb-2 caps-label">Example request</div>
-      <CodeBlock>{snippetFor(route, lang)}</CodeBlock>
+      <CodeBlock>{snippetFor(route, lang, baseUrl)}</CodeBlock>
 
       <div className="mt-7 mb-2 caps-label">Example response</div>
       <div className="mb-2 flex items-center gap-2">
@@ -412,7 +418,7 @@ function EndpointDoc({ route }: { route: Route }) {
             {route.schemaRef ? (
               <span className="inline-flex min-h-6 items-center gap-1.5 rounded-md bg-accent-z-soft px-2 py-1 font-mono text-xs whitespace-nowrap text-ink-2">
                 <FileCode2 size={14} strokeWidth={1.5} className="text-ink-3" />
-                schema inferred from <span className="text-link-z">{route.schemaRef}</span>
+                schema inferred from <SourceRef fileRef={route.schemaRef} className="text-xs" />
               </span>
             ) : null}
             <Button
@@ -436,7 +442,7 @@ function EndpointDoc({ route }: { route: Route }) {
 
           <ResponseSection route={route} />
 
-          <p className="mt-10 text-xs text-ink-3">Generated from code · last scan 2 m ago</p>
+          <p className="mt-10 text-xs text-ink-3">Generated from code</p>
         </div>
 
         <ExamplesColumn route={route} />
@@ -445,58 +451,116 @@ function EndpointDoc({ route }: { route: Route }) {
   );
 }
 
-/* ── Static pages ─────────────────────────────────────────────────────────── */
+/* ── Daemon-backed pages ──────────────────────────────────────────────────── */
 
-interface StaticPage {
-  title: string;
-  paragraphs: string[];
-  code: string;
-}
+function DaemonDoc({ pageId }: { pageId: string }) {
+  const listedTitle = useStore((s) => s.docPages.find((p) => p.id === pageId)?.title);
+  const pushToast = useStore((s) => s.pushToast);
+  const [page, setPage] = useState<DocPageContent | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
 
-const STATIC_PAGES: Record<string, StaticPage> = {
-  introduction: {
-    title: "Introduction",
-    paragraphs: [
-      "test-backend-case-1 exposes a JSON API for users, posts, categories, products and orders. Every endpoint on this portal is generated from the Express source — routes, schemas and middleware are read directly from the code, so what you see here is what the server actually mounts.",
-      "All endpoints live under http://localhost:3000 and speak application/json. Resource ids are opaque strings (usr_8f3k2, ord_2214) and timestamps are ISO 8601 in UTC.",
-      "Start with the health probe to confirm the server is up:",
-    ],
-    code: `curl 'http://localhost:3000/health'\n\n{ "status": "ok", "uptime": 91230 }`,
-  },
-  authentication: {
-    title: "Authentication",
-    paragraphs: [
-      "Write endpoints and everything under /api/v1/users and /api/v1/orders sit behind the requireAuth middleware. Requests authenticate with a bearer token in the Authorization header; unauthenticated calls receive 401 with an empty body.",
-      "Tokens are issued by auth.example.dev via the OAuth 2.0 authorization-code flow with PKCE. Access tokens expire after one hour — refresh them server-side rather than persisting them in a client.",
-    ],
-    code: `curl 'http://localhost:3000/api/v1/users' \\\n  -H 'authorization: Bearer <access-token>'`,
-  },
-  errors: {
-    title: "Errors",
-    paragraphs: [
-      "Errors use conventional status codes: 400 for validation failures, 401 for missing or expired credentials, 404 for unknown resources, and 500 for handler faults. The body is always a JSON object with a single error string, plus an issues array on validation failures.",
-      "Validation runs against the Zod schema declared next to each handler before the handler executes, so a 400 always names the offending field:",
-    ],
-    code: `{\n  "error": "body.total is required",\n  "issues": [\n    { "path": "total", "message": "Required" }\n  ]\n}`,
-  },
-};
+  useEffect(() => {
+    let alive = true;
+    setPage(null);
+    setLoadError(null);
+    setEditing(false);
+    getClient()
+      .getDocPage(pageId)
+      .then((p) => {
+        if (alive) setPage(p);
+      })
+      .catch((e: unknown) => {
+        if (alive) setLoadError(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      alive = false;
+    };
+  }, [pageId]);
 
-function StaticDoc({ page }: { page: StaticPage }) {
+  const startEdit = () => {
+    setDraft(page?.content ?? "");
+    setEditing(true);
+  };
+
+  const save = async () => {
+    if (!page || saving) return;
+    setSaving(true);
+    try {
+      const saved = await getClient().saveDocPage(pageId, { content: draft });
+      setPage({ ...page, title: saved.title, content: draft });
+      useStore.setState((s) => ({ docPages: s.docPages.map((p) => (p.id === saved.id ? saved : p)) }));
+      setEditing(false);
+      pushToast({ kind: "info", text: `Saved ${saved.title}` });
+    } catch {
+      /* the daemon's message is already toasted by the client */
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const title = page?.title ?? listedTitle ?? pageId;
+
   return (
     <div className="fade-scroll min-h-0 flex-1 overflow-y-auto">
       <div className="max-w-[680px] px-4 sm:px-7 lg:px-10 pt-7 pb-16">
-        <h1 className="text-xl font-semibold text-ink">{page.title}</h1>
-        <div className="mt-5 flex flex-col gap-4">
-          {page.paragraphs.map((p, i) => (
-            <p key={i} className="text-base leading-6 text-ink-2">
-              {p}
-            </p>
-          ))}
+        <div className="flex items-start justify-between gap-4">
+          <h1 className="min-w-0 text-xl font-semibold text-ink">{title}</h1>
+          {page && !editing ? (
+            <GhostButton size="sm" className="mt-1 shrink-0" onClick={startEdit}>
+              <Pencil size={16} strokeWidth={1.5} />
+              Edit
+            </GhostButton>
+          ) : null}
         </div>
-        <div className="mt-6">
-          <CodeBlock>{page.code}</CodeBlock>
-        </div>
-        <p className="mt-10 text-xs text-ink-3">Generated from code · last scan 2 m ago</p>
+
+        {loadError ? (
+          <div className="mt-5 flex h-9 items-center rounded-md bg-err-soft px-3 font-mono text-xs text-err">{loadError}</div>
+        ) : null}
+
+        {!page && !loadError ? (
+          <div className="mt-5 flex items-center gap-2 text-base text-ink-3">
+            <Loader2 size={14} strokeWidth={1.5} className="animate-spin" />
+            reading…
+          </div>
+        ) : null}
+
+        {page && editing ? (
+          <div className="mt-5 animate-in fade-in-0 duration-[var(--dur-base)] ease-[var(--ease-out)]">
+            <div className="overflow-hidden rounded-lg border border-line">
+              <CodeEditor
+                ariaLabel={`${title} content`}
+                value={draft}
+                onChange={setDraft}
+                language="text"
+                minHeight="320px"
+                highlightVariables={false}
+              />
+            </div>
+            <div className="mt-3 flex items-center justify-end gap-2">
+              <GhostButton onClick={() => setEditing(false)} disabled={saving}>
+                Cancel
+              </GhostButton>
+              <AccentButton onClick={() => void save()} disabled={saving} aria-busy={saving}>
+                {saving ? <Loader2 size={16} strokeWidth={1.5} className="animate-spin" /> : null}
+                Save
+              </AccentButton>
+            </div>
+          </div>
+        ) : null}
+
+        {page && !editing ? (
+          <div className="mt-5 flex flex-col gap-4 animate-in fade-in-0 duration-[var(--dur-base)] ease-[var(--ease-out)]">
+            {page.content.trim() !== "" ? <Markdown source={page.content} /> : null}
+            {page.content.trim() === "" ? (
+              <p className="text-base leading-6 text-ink-3">This page is empty — edit it to add content.</p>
+            ) : null}
+          </div>
+        ) : null}
+
+        <p className="mt-10 text-xs text-ink-3">Stored in .zestman/docs.json</p>
       </div>
     </div>
   );
@@ -507,12 +571,11 @@ function StaticDoc({ page }: { page: StaticPage }) {
 export function DocsPage() {
   const selectedDocId = useStore((s) => s.sections.docs.selectedDocId);
   const routes = useStore((s) => s.routes);
-
-  const staticPage = STATIC_PAGES[selectedDocId];
-  if (staticPage) return <StaticDoc page={staticPage} />;
+  const docPages = useStore((s) => s.docPages);
 
   const route = routes.find((r) => r.id === selectedDocId);
-  if (!route) return <StaticDoc page={STATIC_PAGES.introduction} />;
+  if (route) return <EndpointDoc route={route} />;
 
-  return <EndpointDoc route={route} />;
+  const pageId = docPages.some((p) => p.id === selectedDocId) ? selectedDocId : (docPages[0]?.id ?? selectedDocId);
+  return <DaemonDoc key={pageId} pageId={pageId} />;
 }
