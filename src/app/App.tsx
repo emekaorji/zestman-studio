@@ -24,6 +24,7 @@ import { DialogHost } from "@/features/dialogs/DialogHost";
 import { CommandPalette } from "@/features/dialogs/CommandPalette";
 import { ToastHost } from "@/features/dialogs/ToastHost";
 import { ConnectScreen } from "@/features/connect/ConnectScreen";
+import { WaitingScreen } from "@/features/connect/WaitingScreen";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 const PAGES: Record<SectionId, ComponentType> = {
@@ -72,6 +73,7 @@ export function App() {
   const boot = useStore((s) => s.boot);
   const applyLaunchLink = useStore((s) => s.applyLaunchLink);
   const connState = useStore((s) => s.connState);
+  const knownProjects = useStore((s) => s.knownProjects);
   const loaded = useStore((s) => s.loaded);
   useGlobalKeyboard();
 
@@ -87,9 +89,12 @@ export function App() {
   }, [boot, applyLaunchLink]);
 
   if (connState !== "connected") {
+    // Projects we have seen before still belong here: the studio shows them and
+    // waits for the app, instead of asking for a link it already had.
+    const waiting = knownProjects.length > 0 && connState !== "unauthorized";
     return (
       <div className="relative h-full">
-        <ConnectScreen />
+        {waiting ? <WaitingScreen /> : <ConnectScreen />}
         <ToastHost />
       </div>
     );

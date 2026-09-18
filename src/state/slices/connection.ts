@@ -1,14 +1,17 @@
 import type { StateCreator } from "zustand";
 import type { StudioStore } from "../store";
 import type { ConnectionState } from "@/daemon/client";
+import type { ProjectSummary } from "@/daemon/types";
 import { DaemonHttpError } from "@/daemon/http/HttpDaemonClient";
 import {
-  adoptSameOriginDaemon,
   consumeLaunchHash,
+  findDaemon,
   getConnection,
+  loadKnownProjects,
   parseLaunchLink,
   probe,
   saveConnection,
+  saveKnownProjects,
 } from "@/app/connection";
 import { createClient, currentClientProjectId, disposeClient } from "@/app/client";
 import { loadUi } from "../persistence";
@@ -20,6 +23,8 @@ export interface ConnectionSlice {
   /** Last daemon error while connecting/loading — shown under the state copy. */
   connError: string | null;
   connPort: number | null;
+  /** Projects from the last time we were connected; what the waiting view lists. */
+  knownProjects: ProjectSummary[];
   /** The shared WebSocket's state; anything but `open` shows in the status bar. */
   wsState: ConnectionState;
   /** Whether the socket has ever been open this session (connecting vs. reconnecting). */
@@ -49,20 +54,28 @@ export const createConnectionSlice: StateCreator<StudioStore, [], [], Connection
 
     const launch = consumeLaunchHash();
     if (launch.projectId) requestedProjectId = launch.projectId;
-    await adoptSameOriginDaemon();
-
-    const conn = getConnection();
-    if (!conn) {
+    const saved = getConnection();
+    if (!saved) {
       disposeClient();
-      set({ connState: "no-connection", connPort: null });
+      set({ connState: "no-connection", connPort: null, knownProjects: loadKnownProjects() });
       return;
     }
-    set({ connPort: conn.port });
+    set({ connPort: saved.port });
 
-    const result = await probe(conn);
+    let conn = saved;
+    let result = await probe(conn);
+    if (result === "unreachable") {
+      // The daemon may have restarted on another port; the token still fits.
+      const found = await findDaemon(saved.token, saved.port);
+      if (found) {
+        conn = found;
+        set({ connPort: conn.port });
+        result = await probe(conn);
+      }
+    }
     if (result !== "ok") {
       disposeClient();
-      set({ connState: result });
+      set({ connState: result, knownProjects: loadKnownProjects() });
       return;
     }
 
@@ -81,7 +94,8 @@ export const createConnectionSlice: StateCreator<StudioStore, [], [], Connection
     if (chosen !== currentClientProjectId()) createClient(conn, chosen);
 
     if (chosen !== get().activeProjectId) get().closeAllTabs();
-    set({ projects, activeProjectId: chosen, connState: "connected", loaded: false, liveEntries: [] });
+    saveKnownProjects(projects);
+    set({ projects, knownProjects: projects, activeProjectId: chosen, connState: "connected", loaded: false, liveEntries: [] });
     await get().loadAll();
   };
 
@@ -97,6 +111,7 @@ export const createConnectionSlice: StateCreator<StudioStore, [], [], Connection
     connState: "booting",
     connError: null,
     connPort: null,
+    knownProjects: [],
     wsState: "closed",
     wsEverOpen: false,
 

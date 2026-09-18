@@ -31,14 +31,18 @@ export function DocTab() {
         ? route.params.map((p) => ({ name: p.key, type: "string · req" }))
         : route.query.map((q) => ({ name: q.key, type: "string · opt" }));
 
-  // Response rows: saved examples + schema-validation 400 when a Zod schema guards the route.
-  const responseRows: Array<{ code: string; label: string; ok: boolean }> = [];
+  // Response rows: what the route has actually answered with (or its OpenAPI document declares),
+  // plus statuses the user saved examples for. Nothing is shown that the daemon does not know.
+  const responseRows: Array<{ code: string; label: string; ok: boolean }> = (route.responses ?? []).map((r) => ({
+    code: String(r.status),
+    label: `· ${r.label || "—"}${routeExamples.some((e) => e.status === r.status) ? " · example ✓" : ""}`,
+    ok: r.status < 400,
+  }));
   for (const e of routeExamples) {
     if (!responseRows.some((r) => r.code === String(e.status))) {
       responseRows.push({ code: String(e.status), label: "· example ✓", ok: e.status < 400 });
     }
   }
-  if (responseRows.length === 0 && !isWs) responseRows.push({ code: "200", label: "· OK", ok: true });
 
   /* Example request — the same generator the Code rail uses, so the doc and the
      snippet can never drift apart. */
@@ -99,11 +103,8 @@ export function DocTab() {
               <span className="text-base text-ink-2">{r.label}</span>
             </div>
           ))}
-          {route.schemaRef ? (
-            <div className="flex h-7 items-center gap-1.5">
-              <span className="font-mono text-sm font-medium text-ink-3">400</span>
-              <span className="text-base text-ink-3">· Validation failed</span>
-            </div>
+          {responseRows.length === 0 ? (
+            <div className="flex h-7 items-center text-base text-ink-3">None seen yet — send it once</div>
           ) : null}
         </div>
       ) : null}

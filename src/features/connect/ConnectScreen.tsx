@@ -109,10 +109,13 @@ export function ConnectScreen() {
             >
               <section>
                 <CapsHeader>Have an Express app?</CapsHeader>
-                <CodeWell lines={["pnpm add -D zestman"]} />
-                <CodeWell className="mt-2" lines={['import { zestman } from "zestman/express"', "zestman(app)"]} />
+                <CodeWell lines={["npx zestman dev"]} />
                 <p className="mt-3 text-base leading-5 text-ink-2">
-                  Run your start script and open the link it prints.
+                  Run it in the project instead of your start script, then open the link it prints. Nothing to install.
+                </p>
+                <p className="mt-4 text-sm leading-5 text-ink-3">
+                  To keep it in the repo: <span className="font-mono">pnpm add -D @zestman/express</span> and{" "}
+                  <span className="font-mono">zestman(app)</span>.
                 </p>
               </section>
               <section>

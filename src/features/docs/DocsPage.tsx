@@ -11,7 +11,7 @@ import {
 import { usePersistentState } from "@/state/persist";
 import { useStore } from "@/state/store";
 import { Markdown } from "@/components/Markdown";
-import type { Route } from "@/daemon/types";
+import type { Example, Route } from "@/daemon/types";
 import type { DocPageContent } from "@/daemon/client";
 import { getClient } from "@/app/client";
 import { useBaseUrl } from "@/hooks/useBaseUrl";
@@ -58,23 +58,43 @@ function paramDocsFor(route: Route): ParamDoc[] {
       name,
       type: Array.isArray(v) ? "array" : typeof v === "object" ? "object" : typeof v,
       required: true,
-      desc: `Validated by ${route.schemaRef ?? "the handler"} before the handler executes.`,
+      desc: route.schemaRef ? `Validated by ${route.schemaRef}` : "",
     }));
   } catch {
     return [];
   }
 }
 
-const RESPONSE_BODIES: Record<string, string> = {
-  users: `{\n  "id": "usr_8f3k2",\n  "name": "Ada Lovelace",\n  "email": "ada@example.dev",\n  "role": "member",\n  "createdAt": "2026-08-30T09:41:07Z"\n}`,
-  orders: `{\n  "id": "ord_2214",\n  "userId": "usr_8f3k2",\n  "status": "created",\n  "total": 118.4,\n  "createdAt": "2026-08-30T09:41:07Z"\n}`,
-  posts: `{\n  "id": "pst_51ac",\n  "title": "Hello world",\n  "authorId": "usr_8f3k2",\n  "publishedAt": "2026-08-30T09:41:07Z"\n}`,
-  categories: `{\n  "id": "cat_09",\n  "name": "Peripherals",\n  "slug": "peripherals"\n}`,
-  products: `{\n  "id": "prd_401",\n  "sku": "ZM-401",\n  "name": "Split keyboard",\n  "price": 149\n}`,
-  app: `{\n  "status": "ok",\n  "uptime": 91230\n}`,
-};
+/** One row of a route's responses as the docs show it: the best real body we have for that status. */
+interface DocResponse {
+  status: number;
+  label: string;
+  body: string | null;
+  bytes: number | null;
+  note: string;
+}
 
-const ERROR_400 = `{\n  "error": "Validation failed",\n  "issues": [\n    { "path": "email", "message": "Required" }\n  ]\n}`;
+/**
+ * Saved examples first (the user chose them), then the latest real response the daemon saw,
+ * then the OpenAPI document's example. Statuses nobody has seen or declared are not invented.
+ */
+function docResponses(route: Route, examples: Example[]): DocResponse[] {
+  const byStatus = new Map<number, DocResponse>();
+  for (const r of route.responses ?? []) {
+    byStatus.set(r.status, {
+      status: r.status,
+      label: r.label || statusText(r.status),
+      body: r.example,
+      bytes: r.example === null ? null : new TextEncoder().encode(r.example).length,
+      note: r.source === "spec" ? (r.example === null ? "documented" : "documented · example from the spec") : r.example === null ? "seen" : "latest real response",
+    });
+  }
+  for (const e of examples.filter((x) => x.routeId === route.id)) {
+    const prev = byStatus.get(e.status);
+    byStatus.set(e.status, { status: e.status, label: prev?.label ?? statusText(e.status), body: e.body, bytes: e.bytes, note: `saved example · ${e.name}` });
+  }
+  return [...byStatus.values()].sort((a, b) => a.status - b.status);
+}
 
 /* ── Code snippet generation ──────────────────────────────────────────────── */
 
@@ -221,7 +241,7 @@ function ResponseCase({
   tone: "ok" | "err";
   label: string;
   note?: string;
-  body: string;
+  body: string | null;
   minHeight: string;
   defaultOpen: boolean;
 }) {
@@ -252,16 +272,20 @@ function ResponseCase({
           "data-open:animate-collapsible-down data-closed:animate-collapsible-up",
         )}
       >
-        <div className="mt-1 mb-2 overflow-hidden rounded-lg border border-line">
-          <CodeEditor
-            value={body}
-            language="json"
-            readOnly
-            minHeight={minHeight}
-            highlightVariables={false}
-            ariaLabel="Example response body"
-          />
-        </div>
+        {body === null ? (
+          <p className="mt-1 mb-3 text-sm text-ink-3">No body seen for this status yet — it fills in once the route answers with it.</p>
+        ) : (
+          <div className="mt-1 mb-2 overflow-hidden rounded-lg border border-line">
+            <CodeEditor
+              value={body}
+              language="json"
+              readOnly
+              minHeight={minHeight}
+              highlightVariables={false}
+              ariaLabel="Example response body"
+            />
+          </div>
+        )}
       </CollapsibleContent>
     </Collapsible>
   );
@@ -269,32 +293,28 @@ function ResponseCase({
 
 function ResponseSection({ route }: { route: Route }) {
   const examples = useStore((s) => s.examples);
-  const okCode = route.method === "POST" ? 201 : route.method === "DELETE" ? 204 : 200;
-  const example = examples.find((e) => e.routeId === route.id && e.status === okCode);
-  const okBody = example?.body ?? RESPONSE_BODIES[route.tags[0] ?? "app"] ?? RESPONSE_BODIES.app;
+  const responses = docResponses(route, examples);
+  const firstOk = responses.find((r) => r.status < 400)?.status ?? responses[0]?.status;
 
   return (
     <>
       <SectionCaps>Responses</SectionCaps>
-      <ResponseCase
-        code={okCode}
-        tone="ok"
-        label={statusText(okCode)}
-        note={example ? "example saved" : undefined}
-        body={okBody}
-        minHeight="176px"
-        defaultOpen
-      />
-      {route.schemaRef ? (
-        <ResponseCase
-          code={400}
-          tone="err"
-          label="Validation failed"
-          body={ERROR_400}
-          minHeight="120px"
-          defaultOpen={false}
-        />
-      ) : null}
+      {responses.length === 0 ? (
+        <p className="text-base text-ink-3">No responses seen yet. Send this request from the workbench and they show up here.</p>
+      ) : (
+        responses.map((r) => (
+          <ResponseCase
+            key={r.status}
+            code={r.status}
+            tone={r.status < 400 ? "ok" : "err"}
+            label={r.label}
+            note={r.note}
+            body={r.body}
+            minHeight={r.status < 400 ? "176px" : "120px"}
+            defaultOpen={r.status === firstOk}
+          />
+        ))
+      )}
     </>
   );
 }
@@ -303,19 +323,14 @@ function ExamplesColumn({ route }: { route: Route }) {
   const examples = useStore((s) => s.examples);
   const baseUrl = useBaseUrl();
   const [lang, setLang] = usePersistentState<SnippetLang>("zestman:ui:docs-lang:v1", "curl");
-  const okCode = route.method === "POST" ? 201 : route.method === "DELETE" ? 204 : 200;
-
-  /* The status picker offers whatever this route actually has examples for,
-     plus its success code, so it can never point at a body we cannot show. */
-  const routeExamples = examples.filter((e) => e.routeId === route.id);
-  const statusOptions = [...new Set([String(okCode), ...routeExamples.map((e) => String(e.status))])].sort();
-  const [status, setStatus] = useState(String(okCode));
-  const shown = statusOptions.includes(status) ? status : String(okCode);
-
-  const example =
-    routeExamples.find((e) => String(e.status) === shown) ??
-    examples.find((e) => e.routeId === route.id && e.status === okCode);
-  const okBody = example?.body ?? RESPONSE_BODIES[route.tags[0] ?? "app"] ?? RESPONSE_BODIES.app;
+  /* The status picker offers only statuses this route has really answered with,
+     was documented with, or has a saved example for. */
+  const responses = docResponses(route, examples);
+  const statusOptions = responses.map((r) => String(r.status));
+  const fallback = String(responses.find((r) => r.status < 400)?.status ?? responses[0]?.status ?? "");
+  const [status, setStatus] = useState(fallback);
+  const shown = statusOptions.includes(status) ? status : fallback;
+  const current = responses.find((r) => String(r.status) === shown) ?? null;
 
   return (
     <div className="mt-10 w-full min-w-0 shrink-0 xl:mt-0 xl:w-[400px] xl:pl-10">
@@ -333,8 +348,8 @@ function ExamplesColumn({ route }: { route: Route }) {
         />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <GhostButton size="sm" aria-label="Choose response status">
-              <span className="font-mono">{shown}</span>
+            <GhostButton size="sm" aria-label="Choose response status" disabled={statusOptions.length === 0}>
+              <span className="font-mono">{shown || "—"}</span>
               <ChevronDown size={14} strokeWidth={1.5} className="text-ink-3" />
             </GhostButton>
           </DropdownMenuTrigger>
@@ -354,13 +369,22 @@ function ExamplesColumn({ route }: { route: Route }) {
       <CodeBlock>{snippetFor(route, lang, baseUrl)}</CodeBlock>
 
       <div className="mt-7 mb-2 caps-label">Example response</div>
-      <div className="mb-2 flex items-center gap-2">
-        <StatusChip code={Number(shown)} label={`${shown} ${statusText(Number(shown))}`} />
-        <span className="font-mono text-xs text-ink-3">{formatBytes(example?.bytes ?? 1229)}</span>
-      </div>
-      <JsonBlock json={okBody} />
-
-      <p className="mt-4 text-xs text-ink-3">Examples are generated from saved runs.</p>
+      {current ? (
+        <>
+          <div className="mb-2 flex items-center gap-2">
+            <StatusChip code={current.status} label={`${current.status} ${current.label}`} />
+            {current.bytes !== null ? <span className="font-mono text-xs text-ink-3">{formatBytes(current.bytes)}</span> : null}
+          </div>
+          {current.body !== null ? (
+            <JsonBlock json={current.body} />
+          ) : (
+            <p className="text-sm text-ink-3">No body seen for this status yet.</p>
+          )}
+          <p className="mt-4 text-xs text-ink-3">{current.note}</p>
+        </>
+      ) : (
+        <p className="text-sm text-ink-3">No responses seen yet — send this request once.</p>
+      )}
     </div>
   );
 }

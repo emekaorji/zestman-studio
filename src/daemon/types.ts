@@ -10,6 +10,8 @@ export interface ProjectSummary {
   routeCount: number;
   fileCount: number;
   online: boolean;
+  /** When an instance of this project was last connected; the waiting view shows it. */
+  lastSeen: number;
 }
 
 /* ── Routes & source ────────────────────────────────────────────────────── */
@@ -100,6 +102,16 @@ export interface RouteSettings {
   caCertPath: string;
 }
 
+/** One status a route answers with — seen in real traffic, or declared by its OpenAPI document. */
+export interface RouteResponse {
+  status: number;
+  /** Reason phrase, or the document's description for this status. */
+  label: string;
+  /** The latest real body seen for this status (already redacted), else the document's example; null when neither exists yet. */
+  example: string | null;
+  source: "observed" | "spec";
+}
+
 export interface Route {
   id: string;
   method: HttpMethod | "WS";
@@ -114,6 +126,8 @@ export interface Route {
   schemaRef: string | null; // "users.schema.ts:12"
   /** Body-schema doc rows — the daemon derives these from the Zod schema. */
   docFields: Array<{ name: string; type: string; required: boolean }>;
+  /** Statuses this route answers with, oldest code first. Absent from older daemons. */
+  responses?: RouteResponse[];
   middleware: string[];
   params: KVRow[]; // path variables
   query: KVRow[];

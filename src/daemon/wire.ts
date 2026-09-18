@@ -53,8 +53,8 @@ export interface HealthResponse {
   name: "zestman";
   version: string;
   protocol: number;
-  /** Whether the studio bundle is served at `/`. */
-  studio: boolean;
+  /** Which setup this daemon belongs to (`ZESTMAN_ENV`), so we can tell two daemons apart. */
+  env: string;
 }
 
 export interface ImportResult {

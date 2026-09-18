@@ -211,16 +211,22 @@ export function RoutesSidebar() {
 
       {/* tree */}
       <div className="flex flex-col gap-0.5 pt-2 pb-3">
-        {files.map((file) => (
-          <FileGroup
-            key={file.id}
-            file={file}
-            routes={httpRoutesOf(file)}
-            activeRouteId={activeRouteId}
-            open={expanded.has(file.id)}
-            onOpenChange={(open) => setOpen(file.id, open)}
-          />
-        ))}
+        {/* A file that only mounts routers or holds schemas declares no routes: no empty group for it. */}
+        {files.flatMap((file) => {
+          const fileRoutes = httpRoutesOf(file);
+          return fileRoutes.length > 0
+            ? [
+                <FileGroup
+                  key={file.id}
+                  file={file}
+                  routes={fileRoutes}
+                  activeRouteId={activeRouteId}
+                  open={expanded.has(file.id)}
+                  onOpenChange={(open) => setOpen(file.id, open)}
+                />,
+              ]
+            : [];
+        })}
       </div>
     </SidebarLevel2>
   );

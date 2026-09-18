@@ -7,9 +7,15 @@
  * connection in localStorage, and strip the fragment so a copied URL does not
  * carry the token around.
  */
-import { DAEMON_HOST, type ConnectionInfo, type HealthResponse } from "@/daemon/wire";
+import { DAEMON_HOST, DEFAULT_DAEMON_PORT, type ConnectionInfo, type HealthResponse } from "@/daemon/wire";
+import type { ProjectSummary } from "@/daemon/types";
 
 export const CONN_KEY = "zestman:conn:v1";
+/** The last project list we saw, so a dead daemon still shows the projects it knows. */
+export const PROJECTS_KEY = "zestman:projects:v1";
+
+/** How many ports above the default a daemon may have walked to. */
+const SCAN_SPAN = 6;
 
 export type ProbeResult = "ok" | "unauthorized" | "unreachable";
 
@@ -123,21 +129,6 @@ async function fetchHealth(base: string): Promise<HealthResponse | null> {
   }
 }
 
-/**
- * When the page is served by the daemon itself, the daemon's port is our own
- * port. Adopt it (keeping whatever token we have) so a stale saved connection
- * cannot point at a daemon that is no longer there.
- */
-export async function adoptSameOriginDaemon(): Promise<void> {
-  const port = Number(window.location.port);
-  if (!window.location.port || !Number.isInteger(port) || port <= 0) return;
-  const health = await fetchHealth(window.location.origin);
-  if (!health) return;
-  const saved = getConnection();
-  if (!saved) return;
-  if (saved.port !== port) saveConnection({ port, token: saved.token });
-}
-
 /** `GET /health`, then `GET /api/projects` with the token. */
 export async function probe(conn: ConnectionInfo): Promise<ProbeResult> {
   const base = `http://${DAEMON_HOST}:${conn.port}`;
@@ -153,5 +144,46 @@ export async function probe(conn: ConnectionInfo): Promise<ProbeResult> {
     return "ok";
   } catch {
     return "unreachable";
+  }
+}
+
+/* ── finding a daemon again ──────────────────────────────────────────────── */
+
+/**
+ * The daemon walks up from its default port when one is taken, and its token
+ * survives restarts. A studio that connected once can therefore find it again
+ * on its own: probe the range and authorise with the token we already hold.
+ */
+export async function findDaemon(token: string, prefer?: number): Promise<ConnectionInfo | null> {
+  const ports = [...(prefer ? [prefer] : []), ...Array.from({ length: SCAN_SPAN }, (_, i) => DEFAULT_DAEMON_PORT + i)];
+  for (const port of [...new Set(ports)]) {
+    const conn = { port, token };
+    if ((await probe(conn)) === "ok") {
+      saveConnection(conn);
+      return conn;
+    }
+  }
+  return null;
+}
+
+/* ── the projects we last saw ────────────────────────────────────────────── */
+
+export function saveKnownProjects(projects: ProjectSummary[]): void {
+  try {
+    window.localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
+  } catch {
+    /* storage unavailable — the switcher just starts empty next time */
+  }
+}
+
+export function loadKnownProjects(): ProjectSummary[] {
+  try {
+    const raw = window.localStorage.getItem(PROJECTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((p): p is ProjectSummary => typeof p === "object" && p !== null && typeof (p as ProjectSummary).id === "string");
+  } catch {
+    return [];
   }
 }

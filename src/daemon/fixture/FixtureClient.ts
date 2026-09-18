@@ -198,6 +198,7 @@ export class FixtureClient implements DaemonClient {
         routeCount: 27,
         fileCount: 35,
         online: true,
+        lastSeen: Date.now() - 3_600_000,
       },
       {
         id: "pixel-relay",
@@ -207,6 +208,7 @@ export class FixtureClient implements DaemonClient {
         routeCount: 6,
         fileCount: 9,
         online: true,
+        lastSeen: Date.now() - 3_600_000,
       },
     ];
   }
