@@ -22,6 +22,7 @@ import { SourceRef } from "@/components/SourceRef";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { CodeEditor } from "@/lib/codemirror/CodeEditor";
+import { prettyJson } from "@/lib/prettyBody";
 
 /* ── Content data ─────────────────────────────────────────────────────────── */
 
@@ -277,7 +278,7 @@ function ResponseCase({
         ) : (
           <div className="mt-1 mb-2 overflow-hidden rounded-lg border border-line">
             <CodeEditor
-              value={body}
+              value={prettyJson(body) ?? body}
               language="json"
               readOnly
               minHeight={minHeight}

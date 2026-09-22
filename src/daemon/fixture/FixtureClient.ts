@@ -10,7 +10,6 @@ import type {
 import type {
   GitInfo,
   CheckDetail,
-  CodeSnippet,
   DocPage,
   ExecResult,
   Flow,
@@ -471,39 +470,6 @@ export class FixtureClient implements DaemonClient {
   }
   async fetchOAuthToken() {
     return { active: true, expiresInMin: 52, masked: "••••9f2" };
-  }
-
-  async getSnippet(routeId: string, language: string): Promise<CodeSnippet> {
-    const route = this.db.routes.find((r) => r.id === routeId) ?? CANON.createUser;
-    if (language === "curl") {
-      return {
-        language: "cURL",
-        variant: "",
-        lines: [
-          { text: "curl -X " + route.method + " \\", tone: "plain" },
-          { text: `  'http://localhost:3000${route.path}' \\`, tone: "str" },
-          { text: "  -H 'content-type: application/json' \\", tone: "plain" },
-          { text: "  -H 'authorization: Bearer ····9f2' \\", tone: "plain" },
-          { text: `  -d '{ "name": "Ada Lovelace",`, tone: "str" },
-          { text: `        "email": "ada@example.dev",`, tone: "str" },
-          { text: `        "role": "member" }'`, tone: "str" },
-        ],
-      };
-    }
-    return {
-      language: "TypeScript",
-      variant: "axios",
-      lines: [
-        { text: 'import axios from "axios"', tone: "key" },
-        { text: "", tone: "plain" },
-        { text: `await axios.${route.method.toLowerCase()}(`, tone: "plain" },
-        { text: `  "{{baseUrl}}${route.path}",`, tone: "str" },
-        { text: `  { name: "Ada Lovelace",`, tone: "str" },
-        { text: `    email: "ada@example.dev",`, tone: "str" },
-        { text: `    role: "member" }`, tone: "str" },
-        { text: ")", tone: "plain" },
-      ],
-    };
   }
 
   async getXray(routeId: string) {

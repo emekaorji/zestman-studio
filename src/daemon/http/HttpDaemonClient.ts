@@ -14,7 +14,6 @@ import type {
 } from "../client";
 import type {
   CheckDetail,
-  CodeSnippet,
   CookieRow,
   Diagnostic,
   DocPage,
@@ -326,12 +325,6 @@ export class HttpDaemonClient implements DaemonClient {
     return this.request<DocPage>("PUT", this.p(`/docs/pages/${encodeURIComponent(id)}`), patch);
   }
 
-  getSnippet(routeId: string, language: string) {
-    return this.request<CodeSnippet>(
-      "GET",
-      this.p(`/snippet?routeId=${encodeURIComponent(routeId)}&language=${encodeURIComponent(language)}`),
-    );
-  }
   getXray(routeId: string) {
     return this.request<XrayResult>("GET", this.p(`/xray/${encodeURIComponent(routeId)}`));
   }

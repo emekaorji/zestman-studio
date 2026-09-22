@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, X } from "lucide-react";
+import { ChevronDown, Plus, X } from "lucide-react";
 import { useStore } from "@/state/store";
 import type { OpenTab } from "@/state/slices/workbench";
 import type { Route } from "@/daemon/types";
@@ -13,6 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { tabLabel } from "./lib";
 
 /**
@@ -134,6 +135,7 @@ export function EditorTabs() {
   const wsConnected = useStore((s) => s.wsConnected);
   const setActiveTab = useStore((s) => s.setActiveTab);
   const closeTab = useStore((s) => s.closeTab);
+  const pushDialog = useStore((s) => s.pushDialog);
 
   const stripRef = useRef<HTMLDivElement>(null);
   const [overflowing, setOverflowing] = useState(false);
@@ -190,6 +192,28 @@ export function EditorTabs() {
     stripRef.current?.querySelector<HTMLButtonElement>(`button[data-tab-id="${id}"]`)?.focus();
   };
 
+  /* New sits right after the last tab. Once the tabs overflow it moves out of
+     the scroller to the right edge, where the scroller's fade cannot dim it. */
+  const newRequest = (
+    <div role="presentation" className="flex shrink-0 items-center border-b border-line px-1">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="New request"
+            onClick={() => pushDialog({ kind: "import", tab: "postman" })}
+            className="text-ink-3 transition-colors duration-[var(--dur-base)] ease-[var(--ease-in-out)] hover:bg-ds-gray-alpha-200 hover:text-ink"
+          >
+            <Plus size={16} strokeWidth={1.5} />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>New request</TooltipContent>
+      </Tooltip>
+    </div>
+  );
+
   return (
     <div
       className="relative flex shrink-0 items-stretch bg-sunken"
@@ -218,8 +242,11 @@ export function EditorTabs() {
             />
           );
         })}
+        {overflowing ? null : newRequest}
         <div role="presentation" className="min-w-4 flex-1 border-b border-line" />
       </div>
+
+      {overflowing ? newRequest : null}
 
       {overflowing ? (
         <DropdownMenu>

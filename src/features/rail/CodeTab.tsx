@@ -1,7 +1,6 @@
 import { Check, Copy } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useStore } from "@/state/store";
-import { useBaseUrl } from "@/hooks/useBaseUrl";
 import { CapsHeader, MiniSwitch } from "@/components/primitives";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,13 +12,8 @@ import {
   CommandShortcut,
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
-import {
-  buildSnippet,
-  routeBodyJson,
-  snippetLanguages,
-  snippetUrl,
-  snippetVariant,
-} from "./snippets";
+import { snippetLanguages, snippetVariant } from "./snippets";
+import { SnippetBlock, useSnippet } from "./SnippetBlock";
 
 /**
  * The language picker is a real listbox: shadcn's `Command` (cmdk) gives the
@@ -93,7 +87,6 @@ export function CodeTab() {
   const openTabs = useStore((s) => s.openTabs);
   const activeTabId = useStore((s) => s.activeTabId);
   const pushToast = useStore((s) => s.pushToast);
-  const baseUrl = useBaseUrl();
   const [copied, setCopied] = useState(false);
 
   const tab = openTabs.find((t) => t.id === activeTabId);
@@ -105,17 +98,12 @@ export function CodeTab() {
      header for a language this route has no snippet for. */
   const selected = languages.includes(railCodeLang) ? railCodeLang : languages[0];
 
-  const req = {
-    method: route?.method ?? "POST",
-    url: snippetUrl(resolveVars ? baseUrl : "{{baseUrl}}", route?.path ?? "/"),
-    body: route ? routeBodyJson(route) : null,
-    isWs,
-  };
-  const lines = buildSnippet(selected, req) ?? [];
+  const snippet = useSnippet(route, selected, resolveVars);
   const variant = snippetVariant(selected, isWs);
 
   const copy = () => {
-    void navigator.clipboard?.writeText(lines.map((l) => l.t).join("\n"));
+    if (!snippet) return;
+    void navigator.clipboard?.writeText(snippet.code);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1500);
     pushToast({ kind: "info", text: `Copied ${selected} snippet` });
@@ -162,20 +150,14 @@ export function CodeTab() {
           {selected}
           {variant ? ` · ${variant}` : ""}
         </CapsHeader>
-        <div
-          key={selected}
-          className="fade-scroll-x overflow-x-auto rounded-md border border-line bg-sunken p-2.5 animate-in fade-in-0 duration-[var(--dur-base)] ease-[var(--ease-out)]"
-        >
-          {lines.map((l, i) =>
-            l.t === "" ? (
-              <div key={i} className="h-2" />
-            ) : (
-              <div key={i} className={cn("font-mono text-sm whitespace-pre", l.c)}>
-                {l.t}
-              </div>
-            ),
-          )}
-        </div>
+        {snippet ? (
+          <SnippetBlock
+            key={selected}
+            snippet={snippet}
+            label={`${selected} snippet`}
+            className="animate-in fade-in-0 duration-[var(--dur-base)] ease-[var(--ease-out)]"
+          />
+        ) : null}
       </div>
     </div>
   );

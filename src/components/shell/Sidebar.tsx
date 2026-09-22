@@ -128,42 +128,50 @@ export function Sidebar({ level2 }: { level2?: ReactNode }) {
 /** Level-2 frame: a 40px back row that pops the sidebar, then the section nav. */
 export function SidebarLevel2({
   title,
+  action,
   children,
   footer,
 }: {
   title: string;
+  /** A control at the right end of the header (an options menu). */
+  action?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
 }) {
   const setSidebarRoot = useStore((s) => s.setSidebarRoot);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <button
-        type="button"
-        aria-label={`Back to all sections (from ${title})`}
-        onClick={() => setSidebarRoot(true)}
-        className={cn(
-          "group/back relative mx-2 mt-2 flex shrink-0 items-center rounded-md px-2",
-          "hover:bg-ds-gray-alpha-100",
-          COLOUR,
-        )}
-        style={{ height: SIDEBAR_HEAD_H }}
-      >
-        <ChevronLeft
-          size={16}
-          strokeWidth={1.5}
-          className={cn("shrink-0 text-ink-3 group-hover/back:text-ink", COLOUR)}
-        />
-        <span
+      {/* The back button spans the header; the action sits over its right end
+          as a sibling, since a button cannot hold another button. */}
+      <div className="relative mx-2 mt-2 shrink-0">
+        <button
+          type="button"
+          aria-label={`Back to all sections (from ${title})`}
+          onClick={() => setSidebarRoot(true)}
           className={cn(
-            "pointer-events-none absolute inset-x-8 truncate text-center text-base font-medium text-ink-2",
-            "group-hover/back:text-ink",
+            "group/back relative flex w-full items-center rounded-md px-2",
+            "hover:bg-ds-gray-alpha-100",
             COLOUR,
           )}
+          style={{ height: SIDEBAR_HEAD_H }}
         >
-          {title}
-        </span>
-      </button>
+          <ChevronLeft
+            size={16}
+            strokeWidth={1.5}
+            className={cn("shrink-0 text-ink-3 group-hover/back:text-ink", COLOUR)}
+          />
+          <span
+            className={cn(
+              "pointer-events-none absolute inset-x-8 truncate text-center text-base font-medium text-ink-2",
+              "group-hover/back:text-ink",
+              COLOUR,
+            )}
+          >
+            {title}
+          </span>
+        </button>
+        {action ? <div className="absolute inset-y-0 right-1 flex items-center">{action}</div> : null}
+      </div>
       <div className="fade-scroll hide-scrollbar min-h-0 flex-1 overflow-y-auto pt-1 pb-2">
         {children}
       </div>

@@ -11,7 +11,10 @@ export const zestmanEditorTheme = EditorView.theme({
     color: "var(--foreground)",
     backgroundColor: "transparent",
     fontSize: "12px",
-    height: "100%",
+    // Fill the box the editor sits in (it is a flex column), so the whole
+    // area reads as the editor, not just the lines typed so far.
+    flex: "1 1 auto",
+    minHeight: "0",
   },
   ".cm-content": {
     fontFamily: "var(--font-mono, ui-monospace, SFMono-Regular, monospace)",
@@ -22,6 +25,7 @@ export const zestmanEditorTheme = EditorView.theme({
     fontFamily: "var(--font-mono, ui-monospace, SFMono-Regular, monospace)",
     lineHeight: "1.6",
     overflow: "auto",
+    flex: "1 1 auto",
   },
   "&.cm-focused": { outline: "none" },
   ".cm-gutters": {
@@ -34,9 +38,20 @@ export const zestmanEditorTheme = EditorView.theme({
   },
   ".cm-activeLineGutter": { backgroundColor: "transparent" },
   ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--foreground)" },
-  ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection": {
-    backgroundColor: "color-mix(in oklch, var(--primary) 22%, transparent)",
+  // The page's own selection colour, so selecting code looks like selecting
+  // anything else. CodeMirror draws selections as a layer behind the text (the
+  // syntax colours stay readable); its base theme paints that layer lavender
+  // (#d7d4f0) with a more specific selector, so these repeat `.cm-editor` to
+  // outrank it rather than silently losing to it.
+  "&.cm-editor .cm-selectionLayer .cm-selectionBackground": {
+    background: "color-mix(in oklch, var(--ds-blue-400) 60%, transparent)",
   },
+  "&.cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": {
+    background: "var(--ds-blue-400)",
+  },
+  // The page's ::selection rule repaints selected text in plain ink; inside
+  // code the tokens keep their colours, as in any code editor.
+  ".cm-line::selection, .cm-line ::selection": { color: "currentColor" },
   ".cm-placeholder": { color: "color-mix(in oklch, var(--muted-foreground) 70%, transparent)" },
   // {{variable}} decorations
   ".cm-var-resolved": {
@@ -73,7 +88,10 @@ export const zestmanHighlightStyle = HighlightStyle.define([
   { tag: [t.string, t.special(t.string)], color: "var(--syntax-str)" },
   { tag: [t.number, t.bool, t.null, t.atom], color: "var(--syntax-num)" },
   { tag: [t.keyword, t.operator, t.modifier], color: "var(--syntax-kw)" },
-  { tag: [t.function(t.variableName), t.function(t.propertyName)], color: "var(--syntax-fn)" },
+  { tag: [t.function(t.variableName), t.function(t.propertyName), t.macroName], color: "var(--syntax-fn)" },
+  { tag: [t.typeName, t.className, t.namespace, t.standard(t.variableName)], color: "var(--syntax-fn)" },
+  { tag: [t.self, t.special(t.variableName), t.definitionKeyword, t.controlKeyword, t.moduleKeyword], color: "var(--syntax-kw)" },
+  { tag: [t.escape, t.regexp], color: "var(--syntax-num)" },
   { tag: [t.comment, t.lineComment, t.blockComment], color: "var(--syntax-comment)", fontStyle: "italic" },
   { tag: [t.bracket, t.punctuation, t.separator], color: "var(--syntax-punct)" },
   { tag: [t.tagName], color: "var(--syntax-tag)" },

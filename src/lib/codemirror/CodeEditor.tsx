@@ -9,15 +9,17 @@ import { html as htmlLang } from "@codemirror/lang-html";
 import { javascript as jsLang } from "@codemirror/lang-javascript";
 import { json as jsonLang, jsonParseLinter } from "@codemirror/lang-json";
 import { xml as xmlLang } from "@codemirror/lang-xml";
-import { bracketMatching, indentOnInput } from "@codemirror/language";
+import { StreamLanguage, bracketMatching, indentOnInput } from "@codemirror/language";
 import { lintKeymap, linter, lintGutter } from "@codemirror/lint";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import {
+  Decoration,
+  type DecorationSet,
   EditorView,
+  ViewPlugin,
+  type ViewUpdate,
   drawSelection,
-  highlightActiveLine,
-  highlightActiveLineGutter,
   keymap,
   lineNumbers,
   placeholder as cmPlaceholder,
@@ -32,11 +34,35 @@ import { cn } from "@/lib/utils";
 
 export type EditorLanguage =
   | "javascript"
+  | "typescript"
   | "json"
   | "text"
   | "xml"
   | "html"
-  | "graphql";
+  | "graphql"
+  | "shell"
+  | "python"
+  | "go"
+  | "ruby"
+  | "php"
+  | "java"
+  | "csharp"
+  | "rust";
+
+/**
+ * Languages only code snippets use, loaded on first sight so the request
+ * editors do not carry every grammar in the main bundle.
+ */
+const LAZY_LANGUAGES: Partial<Record<EditorLanguage, () => Promise<Extension>>> = {
+  python: async () => (await import("@codemirror/lang-python")).python(),
+  go: async () => (await import("@codemirror/lang-go")).go(),
+  php: async () => (await import("@codemirror/lang-php")).php({ plain: true }),
+  java: async () => (await import("@codemirror/lang-java")).java(),
+  rust: async () => (await import("@codemirror/lang-rust")).rust(),
+  shell: async () => StreamLanguage.define((await import("@codemirror/legacy-modes/mode/shell")).shell),
+  ruby: async () => StreamLanguage.define((await import("@codemirror/legacy-modes/mode/ruby")).ruby),
+  csharp: async () => StreamLanguage.define((await import("@codemirror/legacy-modes/mode/clike")).csharp),
+};
 
 interface CodeEditorProps {
   value: string;
@@ -54,6 +80,71 @@ interface CodeEditorProps {
    * a naming source — so without this a screen reader announces "edit, blank".
    */
   ariaLabel: string;
+  /** Classes for CodeMirror's own scroller, for editors that scroll inside a fixed box. */
+  scrollerClassName?: string;
+  /** Line-number gutter. Off for short snippets. */
+  showLineNumbers?: boolean;
+  /** Soft-wrap long lines. Off for code samples, which scroll sideways like any code block. */
+  wrap?: boolean;
+}
+
+const activeLineDeco = Decoration.line({ class: "cm-activeLine" });
+
+/**
+ * The current-line band, only while the editor has focus and nothing is
+ * selected. CodeMirror's own `highlightActiveLine` also marks the line the
+ * selection ends on; that band sits on top of the selection layer, so one line
+ * of a selection read as a different colour from the rest. It also banded
+ * line 1 of every idle editor on the page.
+ */
+const activeLineWhileTyping = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) {
+      this.decorations = this.build(view);
+    }
+    update(u: ViewUpdate) {
+      if (u.docChanged || u.selectionSet || u.viewportChanged || u.focusChanged) this.decorations = this.build(u.view);
+    }
+    build(view: EditorView): DecorationSet {
+      const { ranges } = view.state.selection;
+      if (!view.hasFocus || ranges.some((r) => !r.empty)) return Decoration.none;
+      const starts = [...new Set(ranges.map((r) => view.lineBlockAt(r.head).from))].sort((a, b) => a - b);
+      return Decoration.set(starts.map((from) => activeLineDeco.range(from)));
+    }
+  },
+  { decorations: (p) => p.decorations },
+);
+
+/**
+ * Read-only keeps the editor focusable: the text can be clicked into, selected,
+ * searched and ⌘A'd within the editor (not the whole page), but never changed.
+ * `EditorView.editable(false)` would make the content inert, which is what
+ * sent ⌘A to the page. `inputmode=none` keeps phones from raising a keyboard.
+ */
+function readOnlyExtension(readOnly: boolean): Extension {
+  return readOnly
+    ? [
+        EditorState.readOnly.of(true),
+        EditorView.contentAttributes.of({ "aria-readonly": "true", inputmode: "none" }),
+      ]
+    : [];
+}
+
+/**
+ * CodeMirror only listens on its text. A click in the empty space below the
+ * last line (the rest of the box) lands outside it and did nothing; here it
+ * focuses the editor and puts the cursor where a code editor would: the
+ * nearest position to the click, i.e. on the last line.
+ */
+function clickIntoEditor(view: EditorView | null, e: React.MouseEvent<HTMLDivElement>) {
+  if (!view || e.button !== 0 || e.defaultPrevented) return;
+  const target = e.target as HTMLElement;
+  if (view.contentDOM.contains(target) || target.closest(".cm-gutters, .cm-tooltip, .cm-panels")) return;
+  e.preventDefault();
+  const pos = view.posAtCoords({ x: e.clientX, y: e.clientY }, false);
+  view.focus();
+  view.dispatch({ selection: { anchor: pos }, scrollIntoView: true });
 }
 
 function languageExtension(language: EditorLanguage): Extension {
@@ -63,6 +154,8 @@ function languageExtension(language: EditorLanguage): Extension {
     case "javascript":
     case "graphql":
       return jsLang();
+    case "typescript":
+      return jsLang({ typescript: true });
     case "xml":
       return xmlLang();
     case "html":
@@ -82,6 +175,9 @@ export function CodeEditor({
   minHeight = "200px",
   highlightVariables = true,
   ariaLabel,
+  scrollerClassName,
+  showLineNumbers = true,
+  wrap = true,
 }: CodeEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -105,9 +201,8 @@ export function CodeEditor({
     const state = EditorState.create({
       doc: value ?? "",
       extensions: [
-        lineNumbers(),
-        highlightActiveLine(),
-        highlightActiveLineGutter(),
+        ...(showLineNumbers ? [lineNumbers()] : []),
+        activeLineWhileTyping,
         history(),
         drawSelection(),
         bracketMatching(),
@@ -115,7 +210,7 @@ export function CodeEditor({
         indentOnInput(),
         highlightSelectionMatches(),
         autocompletion(),
-        EditorView.lineWrapping,
+        ...(wrap ? [EditorView.lineWrapping] : []),
         cmPlaceholder(placeholder),
         keymap.of([
           ...closeBracketsKeymap,
@@ -127,16 +222,10 @@ export function CodeEditor({
           indentWithTab,
         ]),
         zestmanCmTheme,
-        EditorView.contentAttributes.of({
-          "aria-label": ariaLabelRef.current,
-          ...(readOnly ? { "aria-readonly": "true" } : {}),
-        }),
+        EditorView.contentAttributes.of({ "aria-label": ariaLabelRef.current }),
         ...(highlightVariables ? [variableExtension, varCompletionExtension] : []),
         langCompartment.current.of(languageExtension(language)),
-        editableCompartment.current.of([
-          EditorView.editable.of(!readOnly),
-          EditorState.readOnly.of(readOnly),
-        ]),
+        editableCompartment.current.of(readOnlyExtension(readOnly)),
         EditorView.updateListener.of((u) => {
           if (u.docChanged) onChangeRef.current?.(u.state.doc.toString());
         }),
@@ -145,6 +234,7 @@ export function CodeEditor({
 
     const view = new EditorView({ state, parent: containerRef.current });
     viewRef.current = view;
+    if (scrollerClassName) view.scrollDOM.classList.add(...scrollerClassName.split(/\s+/).filter(Boolean));
     if (highlightVariables) {
       view.dispatch({ effects: setEditorVars.of(varsRef.current) });
     }
@@ -169,17 +259,21 @@ export function CodeEditor({
   }, [value]);
 
   useEffect(() => {
+    let current = true;
     viewRef.current?.dispatch({
       effects: langCompartment.current.reconfigure(languageExtension(language)),
     });
+    void LAZY_LANGUAGES[language]?.().then((ext) => {
+      if (current) viewRef.current?.dispatch({ effects: langCompartment.current.reconfigure(ext) });
+    });
+    return () => {
+      current = false;
+    };
   }, [language]);
 
   useEffect(() => {
     viewRef.current?.dispatch({
-      effects: editableCompartment.current.reconfigure([
-        EditorView.editable.of(!readOnly),
-        EditorState.readOnly.of(readOnly),
-      ]),
+      effects: editableCompartment.current.reconfigure(readOnlyExtension(readOnly)),
     });
   }, [readOnly]);
 
@@ -191,8 +285,9 @@ export function CodeEditor({
   return (
     <div
       ref={containerRef}
+      onMouseDown={(e) => clickIntoEditor(viewRef.current, e)}
       className={cn(
-        "overflow-hidden rounded-md border border-border bg-card text-left",
+        "flex flex-col overflow-hidden rounded-md border border-border bg-card text-left",
         className
       )}
       style={{ minHeight }}

@@ -15,7 +15,12 @@ export function WorkbenchPage() {
   if (view === "reconcile") return <ReconcilePage />;
 
   if (openTabs.length === 0) {
-    return <EmptyState title="Select a route" sub="or press ⌘K" />;
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <EditorTabs />
+        <EmptyState title="Select a route" sub="or press ⌘K" />
+      </div>
+    );
   }
 
   const active = openTabs.find((t) => t.id === activeTabId) ?? openTabs[0];

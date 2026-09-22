@@ -4,6 +4,7 @@ import { AccentButton, CapsHeader, Dot, GhostButton, StatusChip } from "@/compon
 import { DialogFrame, DialogFooterSplit } from "@/components/dialogs/DialogFrame";
 import { Button } from "@/components/ui/button";
 import { CodeEditor } from "@/lib/codemirror/CodeEditor";
+import { prettyJson } from "@/lib/prettyBody";
 import { useStore } from "@/state/store";
 import { formatBytes, formatMs, relTime, statusText } from "@/lib/format";
 import { id } from "@/lib/ids";
@@ -177,7 +178,7 @@ export function ExamplesDialog({ routeId }: { routeId: string }) {
               <div className="mt-3 h-40 overflow-hidden rounded-md border border-line">
                 <CodeEditor
                   ariaLabel="Example response body"
-                  value={sel.body}
+                  value={prettyJson(sel.body) ?? sel.body}
                   language="json"
                   readOnly
                   minHeight="160px"

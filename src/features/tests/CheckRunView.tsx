@@ -5,9 +5,12 @@ import { SourceRef } from "@/components/SourceRef";
 import { getClient } from "@/app/client";
 import type { CheckDetail, CheckType } from "@/daemon/types";
 import { CodeEditor } from "@/lib/codemirror/CodeEditor";
+import { prettyJson } from "@/lib/prettyBody";
 import { cn } from "@/lib/utils";
 import { useStore } from "@/state/store";
 import { BackLink, PageBody, PageHead, SectionLabel } from "./bits";
+
+const pretty = (body: string | undefined) => (body ? (prettyJson(body) ?? body) : "");
 
 /** Check-run detail: what was sent, what came back, the derived assertion. */
 export function CheckRunView({ routeId }: { routeId: string }) {
@@ -126,7 +129,7 @@ export function CheckRunView({ routeId }: { routeId: string }) {
           <SectionLabel>Request sent</SectionLabel>
           <CodeEditor
             ariaLabel="Request sent by this check"
-            value={detail?.requestBody ?? ""}
+            value={pretty(detail?.requestBody)}
             language="json"
             readOnly
             minHeight="136px"
@@ -137,7 +140,7 @@ export function CheckRunView({ routeId }: { routeId: string }) {
           <SectionLabel>Response{statusCode != null ? ` · ${statusCode}` : ""}</SectionLabel>
           <CodeEditor
             ariaLabel="Response received by this check"
-            value={detail?.responseBody ?? ""}
+            value={pretty(detail?.responseBody)}
             language="json"
             readOnly
             minHeight="136px"

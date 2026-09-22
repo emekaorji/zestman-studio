@@ -1,6 +1,5 @@
 import type {
   CheckDetail,
-  CodeSnippet,
   CookieRow,
   Diagnostic,
   DocPage,
@@ -165,7 +164,6 @@ export interface DaemonClient {
   getDocPage(id: string): Promise<DocPageContent>;
   saveDocPage(id: string, patch: { title?: string; content: string }): Promise<DocPage>;
 
-  getSnippet(routeId: string, language: string): Promise<CodeSnippet>;
   getXray(routeId: string): Promise<XrayResult>;
 
   importPostman(text: string): Promise<ImportResult>;

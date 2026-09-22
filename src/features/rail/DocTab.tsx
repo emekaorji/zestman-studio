@@ -1,11 +1,11 @@
 import { useStore } from "@/state/store";
-import { useBaseUrl } from "@/hooks/useBaseUrl";
 import { CapsHeader, EmptyState, Pill } from "@/components/primitives";
 import { SourceRef } from "@/components/SourceRef";
 import { Button } from "@/components/ui/button";
 import { relTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { buildSnippet, routeBodyJson, snippetLanguages, snippetUrl } from "./snippets";
+import { snippetLanguages } from "./snippets";
+import { SnippetBlock, useSnippet } from "./SnippetBlock";
 
 /** Rail · Doc — mini reference of the open route (provenance-first). */
 export function DocTab() {
@@ -14,10 +14,12 @@ export function DocTab() {
   const activeTabId = useStore((s) => s.activeTabId);
   const examples = useStore((s) => s.examples);
   const pushDialog = useStore((s) => s.pushDialog);
-  const baseUrl = useBaseUrl();
 
   const tab = openTabs.find((t) => t.id === activeTabId);
   const route = routes.find((r) => r.id === tab?.routeId);
+  /* Example request — the same generator the Code rail uses, so the doc and the
+     snippet can never drift apart. */
+  const curl = useSnippet(route, "cURL", true);
   if (!route) return <EmptyState title="Open a route to see its doc" />;
 
   const isWs = route.protocol === "websocket";
@@ -44,15 +46,6 @@ export function DocTab() {
     }
   }
 
-  /* Example request — the same generator the Code rail uses, so the doc and the
-     snippet can never drift apart. */
-  const curlLines =
-    buildSnippet("cURL", {
-      method: route.method,
-      url: snippetUrl(baseUrl, route.path),
-      body: routeBodyJson(route),
-      isWs,
-    }) ?? [];
   const langCount = snippetLanguages(isWs).length;
 
   return (
@@ -139,13 +132,7 @@ export function DocTab() {
         <CapsHeader right={<Pill tone="neutral">{langCount} languages</Pill>}>
           {isWs ? "Example session" : "Example request"}
         </CapsHeader>
-        <div className="fade-scroll-x overflow-x-auto rounded-md border border-line bg-sunken p-2.5">
-          {curlLines.map((l, i) => (
-            <div key={i} className={cn("font-mono text-sm whitespace-pre", l.c)}>
-              {l.t}
-            </div>
-          ))}
-        </div>
+        {curl ? <SnippetBlock snippet={curl} label={isWs ? "Example session" : "Example request"} /> : null}
       </div>
     </div>
   );

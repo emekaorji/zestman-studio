@@ -1,12 +1,19 @@
 import { usePersistentState, setCodec } from "@/state/persist";
-import { ChevronRight, FileText, Play, Plus } from "lucide-react";
+import { ChevronRight, Ellipsis, Folder, Play } from "lucide-react";
 import { useStore } from "@/state/store";
-import type { Route, SourceFile } from "@/daemon/types";
+import type { Route } from "@/daemon/types";
 import { cn } from "@/lib/utils";
 import { ROW_NAV } from "@/lib/metrics";
-import { GhostButton, MethodBadge } from "@/components/primitives";
+import { MethodBadge } from "@/components/primitives";
+import { Button } from "@/components/ui/button";
 import { IslandRow, SidebarLevel2 } from "@/components/shell/Sidebar";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -20,7 +27,7 @@ import {
 const OWNED_PROVENANCE = new Set<Route["provenance"]>(["manual", "spec"]);
 
 /** One route row, with its right-click menu. */
-function RouteLeaf({ route, active }: { route: Route; active: boolean }) {
+function RouteLeaf({ route, active, loose = false }: { route: Route; active: boolean; loose?: boolean }) {
   const navigate = useStore((s) => s.navigate);
   const requestTitleEdit = useStore((s) => s.requestTitleEdit);
   const createRoute = useStore((s) => s.createRoute);
@@ -59,9 +66,9 @@ function RouteLeaf({ route, active }: { route: Route; active: boolean }) {
       <ContextMenuTrigger className="block">
         <IslandRow
           active={active}
-          indent
+          indent={!loose}
           onClick={() => navigate({ go: "route", routeId: route.id })}
-          className="gap-1.5 pr-2 pl-5"
+          className={cn("gap-1.5 pr-2", loose ? "pl-2" : "pl-5")}
         >
           <MethodBadge method={route.method} className="w-10" />
           <span className={cn("truncate font-mono text-sm", active ? "text-ink" : "text-ink-2")}>
@@ -104,16 +111,47 @@ function RouteLeaf({ route, active }: { route: Route; active: boolean }) {
   );
 }
 
-/** A source file and the routes it declares — a real Collapsible, so it eases. */
-function FileGroup({
-  file,
-  routes,
+/**
+ * Requests are grouped by their first tag: the tag the OpenAPI/Swagger document
+ * gives an operation, or, for routes found in code, the resource the path names
+ * (`/api/v1/users/:id` → `users`). Every discovery path has tags, so every
+ * route lands in the tree; a file name never names anything (spec routes have
+ * no file, and `index.js` says nothing about what a request does). A tag with
+ * a single request is not worth a folder: that request sits at the top level.
+ */
+interface RouteGroup {
+  id: string;
+  label: string;
+  routes: Route[];
+}
+
+function groupRoutes(routes: Route[]): { folders: RouteGroup[]; loose: Route[] } {
+  const byTag = new Map<string, RouteGroup>();
+  for (const route of routes) {
+    if (route.protocol !== "http") continue;
+    const label = route.tags.find((t) => t.trim())?.trim() ?? "other";
+    const key = label.toLowerCase();
+    let group = byTag.get(key);
+    if (!group) byTag.set(key, (group = { id: `tag:${key}`, label, routes: [] }));
+    group.routes.push(route);
+  }
+  const folders: RouteGroup[] = [];
+  const loose: Route[] = [];
+  for (const group of byTag.values()) {
+    if (group.routes.length > 1) folders.push(group);
+    else loose.push(...group.routes);
+  }
+  return { folders, loose };
+}
+
+/** A tag and the requests under it — a real Collapsible, so it eases. */
+function TagGroup({
+  group,
   activeRouteId,
   open,
   onOpenChange,
 }: {
-  file: SourceFile;
-  routes: Route[];
+  group: RouteGroup;
   activeRouteId: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -122,7 +160,7 @@ function FileGroup({
     <Collapsible open={open} onOpenChange={onOpenChange}>
       <CollapsibleTrigger
         className={cn(
-          "group/file mx-2 flex w-[calc(100%-16px)] shrink-0 items-center gap-1.5 rounded-md px-2 text-left",
+          "group/tag mx-2 flex w-[calc(100%-16px)] shrink-0 items-center gap-1.5 rounded-md px-2 text-left",
           "transition-colors duration-[var(--dur-base)] ease-[var(--ease-in-out)]",
           "hover:bg-ds-gray-alpha-100 focus-visible:bg-ds-gray-alpha-100",
         )}
@@ -134,17 +172,17 @@ function FileGroup({
           aria-hidden
           className={cn(
             "shrink-0 text-ink-3 transition-transform duration-[var(--dur-base)] ease-[var(--ease-in-out)]",
-            "group-data-[state=open]/file:rotate-90",
+            "group-data-[state=open]/tag:rotate-90",
           )}
         />
-        <FileText size={16} strokeWidth={1.5} className="shrink-0 text-ink-3" />
-        <span className="min-w-0 flex-1 truncate font-mono text-sm text-ink-2">{file.shortName}</span>
-        <span className="shrink-0 pl-2 font-mono text-xs tabular-nums text-ink-3">{routes.length}</span>
+        <Folder size={16} strokeWidth={1.5} className="shrink-0 text-ink-3" />
+        <span className="min-w-0 flex-1 truncate text-sm text-ink-2">{group.label}</span>
+        <span className="shrink-0 pl-2 font-mono text-xs tabular-nums text-ink-3">{group.routes.length}</span>
       </CollapsibleTrigger>
 
       <CollapsibleContent className="overflow-hidden duration-[var(--dur-slow)] ease-[var(--ease-panel)] data-open:animate-collapsible-down data-closed:animate-collapsible-up">
         <div className="flex flex-col pt-0.5 pb-1">
-          {routes.map((route) => (
+          {group.routes.map((route) => (
             <RouteLeaf key={route.id} route={route} active={route.id === activeRouteId} />
           ))}
         </div>
@@ -154,7 +192,6 @@ function FileGroup({
 }
 
 export function RoutesSidebar() {
-  const files = useStore((s) => s.files);
   const routes = useStore((s) => s.routes);
   const openTabs = useStore((s) => s.openTabs);
   const activeTabId = useStore((s) => s.activeTabId);
@@ -162,71 +199,72 @@ export function RoutesSidebar() {
   const navigate = useStore((s) => s.navigate);
 
   const activeProjectId = useStore((st) => st.activeProjectId);
-  // First visit: the first three files open, the rest fold — the tree stays scannable.
+  const { folders, loose } = groupRoutes(routes);
+  // First visit: the first three folders open, the rest fold — the tree stays scannable.
   const [expanded, setExpanded] = usePersistentState<Set<string>>(
-    `zestman:ws:${activeProjectId}:tree:v1`,
-    new Set(files.slice(0, 3).map((f) => f.id)),
+    `zestman:ws:${activeProjectId}:tree:v2`,
+    new Set(folders.slice(0, 3).map((g) => g.id)),
     setCodec,
   );
 
   const activeRouteId = openTabs.find((t) => t.id === activeTabId)?.routeId ?? null;
-  const byId = new Map(routes.map((r) => [r.id, r]));
   const wsRoute = routes.find((r) => r.protocol === "websocket");
 
-  const setOpen = (fileId: string, open: boolean) =>
+  const setOpen = (groupId: string, open: boolean) =>
     setExpanded((prev) => {
       const next = new Set(prev);
-      if (open) next.add(fileId);
-      else next.delete(fileId);
+      if (open) next.add(groupId);
+      else next.delete(groupId);
       return next;
     });
 
-  const httpRoutesOf = (file: SourceFile): Route[] =>
-    file.routeIds
-      .map((id) => byId.get(id))
-      .filter((r): r is Route => r != null && r.protocol === "http");
+  const options = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Routes options"
+          className="text-ink-3 transition-colors duration-[var(--dur-base)] ease-[var(--ease-in-out)] hover:bg-ds-gray-alpha-200 hover:text-ink data-[state=open]:text-ink"
+        >
+          <Ellipsis size={16} strokeWidth={1.5} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" sideOffset={4} className="min-w-52">
+        <DropdownMenuItem className="gap-2 text-base" onSelect={() => pushDialog({ kind: "runner", scope: "all" })}>
+          <Play size={16} strokeWidth={1.5} className="text-ink-3" />
+          Run all
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="gap-2 text-base"
+          disabled={!wsRoute}
+          onSelect={() => wsRoute && navigate({ go: "route", routeId: wsRoute.id })}
+        >
+          <span className="w-4 text-center font-mono text-xs font-semibold text-method-ws">WS</span>
+          WebSocket console
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 
   return (
-    <SidebarLevel2 title="Routes">
-      {/* actions row */}
-      <div className="flex h-9 shrink-0 items-center gap-1.5 px-2">
-        <GhostButton size="sm" onClick={() => pushDialog({ kind: "import", tab: "postman" })}>
-          <Plus size={16} strokeWidth={1.5} />
-          New
-        </GhostButton>
-        <GhostButton
-          size="sm"
-          aria-label="Open the WebSocket console"
-          className="font-mono font-semibold text-method-ws"
-          onClick={() => wsRoute && navigate({ go: "route", routeId: wsRoute.id })}
-        >
-          WS
-        </GhostButton>
-        <div className="flex-1" />
-        <GhostButton size="sm" onClick={() => pushDialog({ kind: "runner", scope: "all" })}>
-          <Play size={16} strokeWidth={1.5} className="text-ink-2" />
-          Run all
-        </GhostButton>
-      </div>
+    <SidebarLevel2 title="Routes" action={options}>
 
       {/* tree */}
       <div className="flex flex-col gap-0.5 pt-2 pb-3">
-        {/* A file that only mounts routers or holds schemas declares no routes: no empty group for it. */}
-        {files.flatMap((file) => {
-          const fileRoutes = httpRoutesOf(file);
-          return fileRoutes.length > 0
-            ? [
-                <FileGroup
-                  key={file.id}
-                  file={file}
-                  routes={fileRoutes}
-                  activeRouteId={activeRouteId}
-                  open={expanded.has(file.id)}
-                  onOpenChange={(open) => setOpen(file.id, open)}
-                />,
-              ]
-            : [];
-        })}
+        {folders.map((group) => (
+          <TagGroup
+            key={group.id}
+            group={group}
+            activeRouteId={activeRouteId}
+            open={expanded.has(group.id)}
+            onOpenChange={(open) => setOpen(group.id, open)}
+          />
+        ))}
+        {loose.map((route) => (
+          <RouteLeaf key={route.id} route={route} active={route.id === activeRouteId} loose />
+        ))}
       </div>
     </SidebarLevel2>
   );

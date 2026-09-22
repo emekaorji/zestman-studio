@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { CodeEditor } from "@/lib/codemirror/CodeEditor";
+import { prettyJson } from "@/lib/prettyBody";
 import { clockTime, formatBytes, formatMs, statusText } from "@/lib/format";
 import { id } from "@/lib/ids";
 import { cn } from "@/lib/utils";
@@ -295,7 +296,7 @@ function BodyBlock({ body }: { body: string | null }) {
       ) : (
         <div className="overflow-hidden rounded-lg border border-line">
           <CodeEditor
-            value={body}
+            value={prettyJson(body) ?? body}
             language="json"
             readOnly
             highlightVariables={false}

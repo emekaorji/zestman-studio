@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { Bookmark, Check, ChevronUp, CircleAlert, Copy, Download, Loader2, X } from "lucide-react";
 import type { ExecResult, Route } from "@/daemon/types";
 import type { OpenTab } from "@/state/slices/workbench";
@@ -10,6 +10,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { TabStrip } from "@/components/tabstrip/TabStrip";
 import { CodeEditor } from "@/lib/codemirror/CodeEditor";
 import { formatBytes, formatMs, relTime } from "@/lib/format";
+import { prettyBody } from "@/lib/prettyBody";
 import { id } from "@/lib/ids";
 import { cn } from "@/lib/utils";
 import { ResizeHandle, useResizeHandle } from "@/components/shell/ResizablePanel";
@@ -53,6 +54,8 @@ function IconAction({
 function ResponseView({ tab, route, result }: { tab: OpenTab; route: Route; result: ExecResult }) {
   const saveExample = useStore((s) => s.saveExample);
   const pushToast = useStore((s) => s.pushToast);
+  // What you read is what you copy: the body pretty-printed, values untouched.
+  const shown = useMemo(() => prettyBody(result.body, result.bodyKind), [result.body, result.bodyKind]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col animate-in fade-in-0 duration-[var(--dur-base)] ease-[var(--ease-out)]">
@@ -65,7 +68,7 @@ function ResponseView({ tab, route, result }: { tab: OpenTab; route: Route; resu
         <IconAction
           label="Copy response body"
           onClick={() => {
-            void navigator.clipboard.writeText(result.body);
+            void navigator.clipboard.writeText(shown.text);
             pushToast({ kind: "info", text: "Response body copied" });
           }}
         >
@@ -110,15 +113,18 @@ function ResponseView({ tab, route, result }: { tab: OpenTab; route: Route; resu
           <Download size={16} strokeWidth={1.5} />
         </IconAction>
       </div>
-      <div className="fade-scroll min-h-0 flex-1 overflow-y-auto px-1">
+      {/* The editor fills the drawer and scrolls itself, so the whole area is
+          the code block: click anywhere in it, then ⌘A selects just the body. */}
+      <div className="flex min-h-0 flex-1 flex-col px-1">
         <CodeEditor
           ariaLabel="Response body"
-          language={result.bodyKind === "json" ? "json" : "text"}
-          value={result.body}
+          language={shown.language}
+          value={shown.text}
           readOnly
           highlightVariables={false}
           minHeight="0"
-          className="rounded-none border-0 bg-transparent [&_.cm-lint-marker]:hidden"
+          scrollerClassName="fade-scroll"
+          className="min-h-0 flex-1 rounded-none border-0 bg-transparent [&_.cm-lint-marker]:hidden"
         />
       </div>
     </div>

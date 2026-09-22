@@ -450,12 +450,6 @@ export interface DocPage {
 
 /* ── Rail / operator / scan ─────────────────────────────────────────────── */
 
-export interface CodeSnippet {
-  language: string;
-  variant: string; // "axios"
-  lines: Array<{ text: string; tone: "key" | "str" | "num" | "plain" | "dim" }>;
-}
-
 export interface XrayLink {
   step: string; // "Route declared"
   fileRef: string; // "users.controller.ts:22"

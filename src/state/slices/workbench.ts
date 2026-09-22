@@ -43,7 +43,7 @@ export interface WorkbenchSlice {
   clearTitleEdit: () => void;
 }
 
-function draftFromRoute(route: Route): RequestDraft {
+export function draftFromRoute(route: Route): RequestDraft {
   return {
     method: route.method,
     url: route.protocol === "websocket" ? route.path : `{{baseUrl}}${route.path}`,
