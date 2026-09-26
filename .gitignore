@@ -2,3 +2,6 @@ node_modules/
 dist/
 .zestman/
 *.tsbuildinfo
+public/sw.js
+public/swe-worker-*.js
+.next/

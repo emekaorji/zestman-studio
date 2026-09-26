@@ -13,7 +13,7 @@ import { useStore } from "@/state/store";
 import { Markdown } from "@/components/Markdown";
 import type { Example, Route } from "@/daemon/types";
 import type { DocPageContent } from "@/daemon/client";
-import { getClient } from "@/app/client";
+import { getClient } from "@/studio/client";
 import { useBaseUrl } from "@/hooks/useBaseUrl";
 import { cn } from "@/lib/utils";
 import { formatBytes, statusText } from "@/lib/format";

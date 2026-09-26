@@ -191,6 +191,7 @@ export class FixtureClient implements DaemonClient {
     return [
       {
         id: "case1",
+        slug: "test-backend-case-1",
         name: "test-backend-case-1",
         framework: "express",
         rootPath: "~/dev/test-backend-case-1",
@@ -201,6 +202,7 @@ export class FixtureClient implements DaemonClient {
       },
       {
         id: "pixel-relay",
+        slug: "pixel-relay",
         name: "pixel-relay",
         framework: "express",
         rootPath: "~/dev/pixel-relay",

@@ -52,7 +52,7 @@ function LinkRow({ busy }: { busy: boolean }) {
           onKeyDown={(e) => {
             if (e.key === "Enter") void connect();
           }}
-          placeholder="https://local.zestman.xyz/#c=23456.…  or  23456.token"
+          placeholder="https://zestman.xyz/#c=23456.…  or  23456.token"
           spellCheck={false}
           autoComplete="off"
           className="h-9 bg-ds-gray-100 font-mono text-sm dark:bg-ds-gray-100"

@@ -18,7 +18,7 @@ export const PROTOCOL_VERSION = 1;
 export const DEFAULT_DAEMON_PORT = 23456;
 
 /** Where the hosted studio lives. */
-export const HOSTED_STUDIO_URL = "https://local.zestman.xyz";
+export const HOSTED_STUDIO_URL = "https://zestman.xyz";
 
 /** Browser origins allowed to talk to the daemon (plus the daemon's own origin). */
 export const STUDIO_ORIGINS = [HOSTED_STUDIO_URL, "http://localhost:5200", "http://127.0.0.1:5200"];

@@ -2,7 +2,7 @@ import type { StateCreator } from "zustand";
 import type { StudioStore } from "../store";
 import type { RequestTabId, ResponseTabId } from "../types";
 import type { ExecResult, RequestDraft, Route } from "@/daemon/types";
-import { getClient } from "@/app/client";
+import { getClient } from "@/studio/client";
 import { id } from "@/lib/ids";
 import { buildVarMap, resolveText } from "@/lib/variables";
 

@@ -5,7 +5,7 @@ import { DialogFrame } from "@/components/dialogs/DialogFrame";
 import { TabStrip } from "@/components/tabstrip/TabStrip";
 import { Alert, AlertTitle } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
-import { getClient } from "@/app/client";
+import { getClient } from "@/studio/client";
 import type { ImportResult } from "@/daemon/wire";
 import { useStore } from "@/state/store";
 import { cn } from "@/lib/utils";

@@ -1,6 +1,10 @@
 import type { LucideIcon } from "lucide-react";
 import { Check, ChevronDown, ChevronsUpDown, FileOutput, PanelLeft, PanelRight, Search } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useStore } from "@/state/store";
+import { FrameworkMark } from "@/components/FrameworkMark";
+import { useScope } from "@/studio/scope";
+import { projectPath } from "@/lib/slugs";
 import { useLayout } from "@/lib/useMediaQuery";
 import { Dot, Kbd } from "@/components/primitives";
 import { Badge } from "@/components/ui/badge";
@@ -83,7 +87,8 @@ export function TopNav() {
   const setPaletteOpen = useStore((s) => s.setPaletteOpen);
   const projects = useStore((s) => s.projects);
   const activeProjectId = useStore((s) => s.activeProjectId);
-  const switchProject = useStore((s) => s.switchProject);
+  const router = useRouter();
+  const { org } = useScope();
   const environments = useStore((s) => s.environments);
   const activateEnvironment = useStore((s) => s.activateEnvironment);
   const navigate = useStore((s) => s.navigate);
@@ -111,6 +116,14 @@ export function TopNav() {
           <span aria-hidden className="shrink-0 text-base text-ink-3">
             /
           </span>
+          {/* `~` is the org for projects on this machine; a real org name sits
+              here once you are signed in to one. */}
+          <span className="shrink-0 font-mono text-base text-ink-2" title={org === "~" ? "This machine" : org}>
+            {org}
+          </span>
+          <span aria-hidden className="shrink-0 text-base text-ink-3">
+            /
+          </span>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -122,6 +135,7 @@ export function TopNav() {
                    and a floor there pushes the switcher out of its group. */
                 className={cn(TRIGGER, "max-w-[240px] sm:min-w-[88px]")}
               >
+                <FrameworkMark framework={project?.framework} className="text-ink-2" />
                 <span className="truncate font-mono text-base text-ink">{project?.name ?? "—"}</span>
                 <ChevronsUpDown size={14} strokeWidth={1.5} className="shrink-0 text-ink-3" />
               </button>
@@ -130,10 +144,11 @@ export function TopNav() {
               {projects.map((p) => (
                 <DropdownMenuItem
                   key={p.id}
-                  onSelect={() => void switchProject(p.id)}
+                  onSelect={() => router.push(projectPath(org, p.slug))}
                   className="h-8 gap-2 px-2 text-base"
                 >
                   <Dot tone={p.online ? "ok" : "muted"} />
+                  <FrameworkMark framework={p.framework} className="text-ink-3" />
                   <span className="min-w-0 flex-1 truncate font-mono text-base text-ink">
                     {p.name}
                   </span>
@@ -148,9 +163,6 @@ export function TopNav() {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Badge variant="secondary" className="hidden shrink-0 font-normal text-ink-2 lg:inline-flex">
-            {project?.framework ?? "—"}
-          </Badge>
         </div>
 
         {/* centre — the command-palette trigger. Below sm there is no room for

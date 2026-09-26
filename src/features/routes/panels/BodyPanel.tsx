@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { getClient } from "@/app/client";
+import { getClient } from "@/studio/client";
 import { buildVarMap, resolveText } from "@/lib/variables";
 import { Paperclip } from "lucide-react";
 import type { BodyMode, FormRow, KVRow, RequestBody, Route } from "@/daemon/types";

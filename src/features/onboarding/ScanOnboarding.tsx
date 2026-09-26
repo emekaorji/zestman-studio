@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { AccentButton, CapsHeader, MethodBadge, Pill } from "@/components/primitives";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { getClient } from "@/app/client";
+import { getClient } from "@/studio/client";
 import type { Route } from "@/daemon/types";
 import { useStore } from "@/state/store";
 import { cn } from "@/lib/utils";

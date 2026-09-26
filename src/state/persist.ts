@@ -12,10 +12,8 @@ import { useCallback, useState } from "react";
  * read is simply "no saved state".
  */
 
-const VERSION = 1;
-
-export const UI_KEY = `zestman:ui:v${VERSION}`;
-export const wsKey = (projectId: string) => `zestman:ws:${projectId}:v${VERSION}`;
+export { UI_KEY, wsKey } from "./keys";
+import { UI_KEY, wsKey } from "./keys";
 
 export function readKey<T>(key: string, fallback: T): T {
   try {

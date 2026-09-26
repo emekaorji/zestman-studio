@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useStore } from "@/state/store";
-import { getClient } from "@/app/client";
+import { getClient } from "@/studio/client";
 import type { XrayResult } from "@/daemon/client";
 import { CapsHeader, Dot, EmptyState, Pill } from "@/components/primitives";
 import { SourceRef } from "@/components/SourceRef";

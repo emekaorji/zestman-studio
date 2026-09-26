@@ -2,17 +2,18 @@
  * Connection bootstrap.
  *
  * The daemon (or the SDK inside the user's app) prints a launch link:
- *   https://local.zestman.xyz/#c=<port>.<token>&p=<projectId>
+ *   https://zestman.xyz/#c=<port>.<token>&p=<projectId>
  * The fragment never reaches a server. We read it once, remember the
  * connection in localStorage, and strip the fragment so a copied URL does not
  * carry the token around.
  */
 import { DAEMON_HOST, DEFAULT_DAEMON_PORT, type ConnectionInfo, type HealthResponse } from "@/daemon/wire";
 import type { ProjectSummary } from "@/daemon/types";
+import { CONN_KEY, PROJECTS_KEY } from "@/state/keys";
 
-export const CONN_KEY = "zestman:conn:v1";
+export { CONN_KEY, PROJECTS_KEY } from "@/state/keys";
 /** The last project list we saw, so a dead daemon still shows the projects it knows. */
-export const PROJECTS_KEY = "zestman:projects:v1";
+
 
 /** How many ports above the default a daemon may have walked to. */
 const SCAN_SPAN = 6;

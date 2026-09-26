@@ -2,7 +2,7 @@ import { CircleCheck, CircleX, Loader2, RefreshCw, Sparkles } from "lucide-react
 import { useEffect, useState } from "react";
 import { GhostButton, Pill } from "@/components/primitives";
 import { SourceRef } from "@/components/SourceRef";
-import { getClient } from "@/app/client";
+import { getClient } from "@/studio/client";
 import type { CheckDetail, CheckType } from "@/daemon/types";
 import { CodeEditor } from "@/lib/codemirror/CodeEditor";
 import { prettyJson } from "@/lib/prettyBody";

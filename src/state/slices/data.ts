@@ -25,7 +25,7 @@ import type {
   VaultRef,
 } from "@/daemon/types";
 import type { DaemonClient } from "@/daemon/client";
-import { getClient, recreateClient } from "@/app/client";
+import { getClient, recreateClient } from "@/studio/client";
 import { loadUi, loadWorkspace, resetWorkspaceWatermark, restoreWorkspace } from "../persistence";
 import { connStateForError } from "./connection";
 

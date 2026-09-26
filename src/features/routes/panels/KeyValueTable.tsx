@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { getClient } from "@/app/client";
+import { getClient } from "@/studio/client";
 import { X } from "lucide-react";
 import type { FormRow, KVRow } from "@/daemon/types";
 import { Button } from "@/components/ui/button";

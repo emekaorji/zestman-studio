@@ -4,6 +4,8 @@ import type { HttpMethod, RouteProtocol } from "@/lib/methods";
 
 export interface ProjectSummary {
   id: string;
+  /** URL name within its org: `zestman.xyz/~/<slug>`. Unique per daemon. */
+  slug: string;
   name: string;
   framework: string; // "express"
   rootPath: string;

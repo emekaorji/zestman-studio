@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import type { ComponentType, ReactNode } from "react";
 import { useStore } from "@/state/store";
 import type { SectionId } from "@/state/types";
@@ -70,23 +69,10 @@ function SectionSidebar(): ReactNode {
 }
 
 export function App() {
-  const boot = useStore((s) => s.boot);
-  const applyLaunchLink = useStore((s) => s.applyLaunchLink);
   const connState = useStore((s) => s.connState);
   const knownProjects = useStore((s) => s.knownProjects);
   const loaded = useStore((s) => s.loaded);
   useGlobalKeyboard();
-
-  useEffect(() => {
-    void boot();
-    // A launch link opened on an already-loaded studio only changes the hash —
-    // no reload — so it has to be consumed here too.
-    const onHash = () => {
-      if (/(^|[#&])c=/.test(window.location.hash)) void applyLaunchLink(window.location.hash);
-    };
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
-  }, [boot, applyLaunchLink]);
 
   if (connState !== "connected") {
     // Projects we have seen before still belong here: the studio shows them and

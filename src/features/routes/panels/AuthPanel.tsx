@@ -1,7 +1,7 @@
 import type { AuthMode, RouteAuth } from "@/daemon/types";
 import type { OpenTab } from "@/state/slices/workbench";
 import { useStore } from "@/state/store";
-import { getClient } from "@/app/client";
+import { getClient } from "@/studio/client";
 import { CapsHeader, Dot, GhostButton, Pill } from "@/components/primitives";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";

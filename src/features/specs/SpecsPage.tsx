@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useStore } from "@/state/store";
 import type { SpecsTab } from "@/state/types";
 import type { DriftChange, DriftField, GitInfo, Route, SpecCommit } from "@/daemon/types";
-import { getClient } from "@/app/client";
+import { getClient } from "@/studio/client";
 import { downloadJson } from "@/lib/download";
 import { relTime } from "@/lib/format";
 import { cn } from "@/lib/utils";

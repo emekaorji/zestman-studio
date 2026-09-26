@@ -12,8 +12,8 @@ import {
   probe,
   saveConnection,
   saveKnownProjects,
-} from "@/app/connection";
-import { createClient, currentClientProjectId, disposeClient } from "@/app/client";
+} from "@/studio/connection";
+import { createClient, currentClientProjectId, disposeClient } from "@/studio/client";
 import { loadUi } from "../persistence";
 
 export type ConnState = "booting" | "no-connection" | "unreachable" | "unauthorized" | "connected";
@@ -30,7 +30,8 @@ export interface ConnectionSlice {
   /** Whether the socket has ever been open this session (connecting vs. reconnecting). */
   wsEverOpen: boolean;
 
-  boot: () => Promise<void>;
+  /** Connects, then opens the project the URL names (`null` = pick one). */
+  boot: (projectSlug?: string | null) => Promise<void>;
   retryConnection: () => Promise<void>;
   /** Accepts a launch URL, a `#c=…` fragment or `port.token`. False when unparsable. */
   applyLaunchLink: (input: string) => Promise<boolean>;
@@ -41,6 +42,8 @@ export interface ConnectionSlice {
 let bootInFlight: Promise<void> | null = null;
 /** `p=` from the launch link, honoured on the next boot. */
 let requestedProjectId: string | null = null;
+/** The slug in the URL, honoured after a launch link and before the last-used project. */
+let requestedSlug: string | null = null;
 
 export function connStateForError(e: unknown): { connState: ConnState; connError: string } {
   const status = e instanceof DaemonHttpError ? e.status : 0;
@@ -88,9 +91,12 @@ export const createConnectionSlice: StateCreator<StudioStore, [], [], Connection
       return;
     }
 
+    /* The launch link wins (it names one project on purpose), then the URL,
+       then whatever was open last. */
     const wanted = requestedProjectId ?? (get().activeProjectId || loadUi().activeProjectId);
     requestedProjectId = null;
-    const chosen = projects.find((p) => p.id === wanted)?.id ?? projects[0]?.id ?? "";
+    const bySlug = requestedSlug ? projects.find((p) => p.slug === requestedSlug)?.id : undefined;
+    const chosen = bySlug ?? projects.find((p) => p.id === wanted)?.id ?? projects[0]?.id ?? "";
     if (chosen !== currentClientProjectId()) createClient(conn, chosen);
 
     if (chosen !== get().activeProjectId) get().closeAllTabs();
@@ -99,7 +105,8 @@ export const createConnectionSlice: StateCreator<StudioStore, [], [], Connection
     await get().loadAll();
   };
 
-  const boot = () => {
+  const boot = (projectSlug?: string | null) => {
+    if (projectSlug !== undefined) requestedSlug = projectSlug;
     if (bootInFlight) return bootInFlight;
     bootInFlight = runBoot().finally(() => {
       bootInFlight = null;
@@ -116,7 +123,7 @@ export const createConnectionSlice: StateCreator<StudioStore, [], [], Connection
     wsEverOpen: false,
 
     boot,
-    retryConnection: boot,
+    retryConnection: () => boot(),
 
     applyLaunchLink: async (input) => {
       const link = parseLaunchLink(input);

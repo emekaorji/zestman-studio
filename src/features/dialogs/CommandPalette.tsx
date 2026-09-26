@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { useStore } from "@/state/store";
-import { buildCommands, type PaletteCommand } from "@/app/commands";
+import { buildCommands, type PaletteCommand } from "@/studio/commands";
 import { Kbd, MethodBadge } from "@/components/primitives";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {

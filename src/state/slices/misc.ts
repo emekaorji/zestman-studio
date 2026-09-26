@@ -2,7 +2,7 @@ import type { StateCreator } from "zustand";
 import type { StudioStore } from "../store";
 import type { OperatorEvent, RunEvent, RunItem, WsEvent } from "@/daemon/types";
 import type { WsSessionHandle } from "@/daemon/client";
-import { getClient } from "@/app/client";
+import { getClient } from "@/studio/client";
 import { loadUi } from "../persistence";
 import { id } from "@/lib/ids";
 

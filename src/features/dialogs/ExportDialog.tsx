@@ -3,7 +3,7 @@ import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 import { DialogFrame } from "@/components/dialogs/DialogFrame";
 import { GhostButton } from "@/components/primitives";
-import { getClient } from "@/app/client";
+import { getClient } from "@/studio/client";
 import type { Environment } from "@/daemon/types";
 import { downloadJson } from "@/lib/download";
 import { useStore } from "@/state/store";
